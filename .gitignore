@@ -1,0 +1,5 @@
+*.json
+
+/dbms
+/file_to_backup
+/storage_node_data

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Distributed File Backup Client</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f9; }
+        h1, h2 { color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        form { margin-bottom: 2em; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #007bff; color: white; }
+        .btn { padding: 10px 15px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; }
+        .btn-restore { background-color: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Distributed Backup System</h1>
+
+        <h2>Upload a New File</h2>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" required>
+            <button type="submit" class="btn">Backup File</button>
+        </form>
+         <h2>Sync Backup Folder</h2>
+        <p>
+            Place files in the <strong>files_to_backup</strong> directory and click Sync.
+            Only new or changed files will be uploaded.
+        </p>
+        <form action="/sync" method="post">
+            <div style="margin-bottom: 1em;">
+                <input type="checkbox" id="encrypt" name="encrypt" value="false">
+                <label for="encrypt">Add AES Encryption</label>
+            </div>
+            <button type="submit" class="btn">Sync Now</button>
+        </form>
+        <h2>Backed-Up Files</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Original Filename</th>
+                    <th>File Hash (SHA-256)</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                <tr>
+                    <td>{{ file.name }}</td>
+                    <td>{{ file.hash[:16] }}...</td>
+                    <td>
+                        <a href="/restore/{{ file.name }}" class="btn btn-restore">Restore</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

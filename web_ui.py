@@ -18,10 +18,10 @@ COORDINATOR_URL = "http://127.0.0.1:5002"
 BACKUP_FOLDER = 'files_to_backup'
 CLIENT_HASH_DB = 'client_local_hashes.json'
 SALT = b'pdc-project-salt'
-CHUNK_THRESHOLD = 30 * 1024 * 1024  # 30 MB
-CHUNK_SIZE = 4 * 1024 * 1024       # 4 MB
+CHUNK_THRESHOLD = 30 * 1024 * 1024
+CHUNK_SIZE = 4 * 1024 * 1024
 
-# --- Helper Functions (Unchanged) ---
+# --- Helper Functions ---
 def derive_key(password: str) -> bytes:
     kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=SALT, iterations=480000)
     return base64.urlsafe_b64encode(kdf.derive(password.encode()))
@@ -36,7 +36,7 @@ def write_local_hashes(hashes):
     with open(CLIENT_HASH_DB, 'w') as f:
         json.dump(hashes, f, indent=4)
 
-# --- Reusable Backup Logic (Unchanged) ---
+# --- Reusable Core Logic ---
 def backup_single_file(filepath, filename, encrypt_file, password):
     try:
         file_size = os.path.getsize(filepath)
@@ -47,7 +47,6 @@ def backup_single_file(filepath, filename, encrypt_file, password):
         log_data = {'filename': filename, 'locations': storage_node_urls, 'encrypted': encrypt_file}
 
         if file_size < CHUNK_THRESHOLD:
-            print(f"'{filename}' is a small file. Processing as a single block.")
             with open(filepath, 'rb') as f:
                 file_data = f.read()
             file_hash = hashlib.sha256(file_data).hexdigest()
@@ -56,17 +55,14 @@ def backup_single_file(filepath, filename, encrypt_file, password):
                 requests.post(f"{node_url}/store/{file_hash}", data=data_to_upload).raise_for_status()
             log_data.update({'is_chunked': False, 'hash': file_hash})
         else:
-            print(f"'{filename}' is a large file. Starting chunking process...")
             chunk_hashes = []
             with open(filepath, 'rb') as f:
                 while True:
                     chunk_data = f.read(CHUNK_SIZE)
-                    if not chunk_data:
-                        break
+                    if not chunk_data: break
                     chunk_hash = hashlib.sha256(chunk_data).hexdigest()
                     chunk_hashes.append(chunk_hash)
                     data_to_upload = fernet.encrypt(chunk_data) if fernet else chunk_data
-                    print(f"  Uploading chunk {len(chunk_hashes)} ({len(data_to_upload)} bytes) with hash {chunk_hash[:8]}...")
                     for node_url in storage_node_urls:
                         requests.post(f"{node_url}/store/{chunk_hash}", data=data_to_upload).raise_for_status()
             log_data.update({'is_chunked': True, 'chunk_hashes': chunk_hashes})
@@ -78,11 +74,27 @@ def backup_single_file(filepath, filename, encrypt_file, password):
         print(f"An error occurred during backup of {filename}: {e}")
         return False
 
+# --- [NEW] The missing delete helper function ---
+def delete_single_file(filename):
+    """Handles the logic for deleting a file from the entire system."""
+    try:
+        print(f"Sending delete request to coordinator for: {filename}")
+        response = requests.post(f"{COORDINATOR_URL}/delete-file", json={'filename': filename})
+        response.raise_for_status()
+        local_hashes = read_local_hashes()
+        if filename in local_hashes:
+            del local_hashes[filename]
+            write_local_hashes(local_hashes)
+            print(f"Removed '{filename}' from local hash cache.")
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error during deletion of {filename}: {e}")
+        return False
+
 # --- Flask Routes ---
 
 @app.route('/')
 def index():
-    """Renders the main page with the list of backed-up files from the coordinator."""
     files = []
     try:
         response = requests.get(f"{COORDINATOR_URL}/list-files")
@@ -94,7 +106,6 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Handles the single file upload form."""
     if 'file' not in request.files or not request.files['file'].filename:
         flash("No file selected.", "error")
         return redirect(url_for('index'))
@@ -120,51 +131,33 @@ def upload_file():
     os.remove(temp_filepath)
     return redirect(url_for('index'))
 
-# [FIXED] This entire function is corrected to pass the filepath, not file_data.
 @app.route('/sync', methods=['POST'])
 def sync_folder():
-    """Handles the folder sync form for incremental backups."""
     encryption_enabled = 'encrypt' in request.form
     password = request.form.get('password', '')
     if encryption_enabled and not password:
         flash("Encryption was selected, but no password was provided.", "error")
         return redirect(url_for('index'))
-    
-    print("\n--- Starting Synchronization Process ---")
     if not os.path.exists(BACKUP_FOLDER):
         os.makedirs(BACKUP_FOLDER)
-
     local_hashes = read_local_hashes()
-    files_in_folder = os.listdir(BACKUP_FOLDER)
-    
-    for filename in files_in_folder:
+    for filename in os.listdir(BACKUP_FOLDER):
         filepath = os.path.join(BACKUP_FOLDER, filename)
-        if not os.path.isfile(filepath):
-            continue
-
-        # We now calculate the hash only for the incremental check
+        if not os.path.isfile(filepath): continue
         with open(filepath, 'rb') as f:
             current_hash = hashlib.sha256(f.read()).hexdigest()
-
         if local_hashes.get(filename) == current_hash:
-            print(f"'{filename}' is unchanged. Skipping.")
             continue
-        
-        print(f"'{filename}' is new or modified. Backing up...")
-        # We now correctly pass the FILEPATH to the backup function
         if backup_single_file(filepath, filename, encryption_enabled, password):
              local_hashes[filename] = current_hash
         else:
             print(f"Failed to backup '{filename}'. Will retry on next sync.")
-
     write_local_hashes(local_hashes)
-    print("--- Synchronization Process Finished ---\n")
     flash("Synchronization process completed.", "success")
     return redirect(url_for('index'))
 
 @app.route('/restore/<filename>')
 def restore_file(filename):
-    """Handles restoring both single-block and chunked files with proper cleanup."""
     try:
         response = requests.get(f"{COORDINATOR_URL}/get-file-info/{filename}")
         response.raise_for_status()
@@ -234,7 +227,7 @@ def restore_file(filename):
 
 @app.route('/delete/<filename>', methods=['POST'])
 def delete_backup(filename):
-    """Initiates the deletion of a backup by calling the coordinator."""
+    """Route to initiate deletion from the UI."""
     if delete_single_file(filename):
         flash(f"Successfully deleted the backup for '{filename}'.", "success")
     else:

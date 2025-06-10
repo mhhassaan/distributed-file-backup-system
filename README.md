@@ -1,1 +1,154 @@
-# distributed-file-backup-system
+# Distributed File Backup System
+
+A fault-tolerant, distributed backup system built in Python as a semester project for Parallel & Distributed Computing. This application allows users to back up files from their local machine to multiple storage nodes, ensuring data integrity, security, and high availability. It features a full web-based user interface for management, automatic background synchronization of specified folders, and robust handling of large files.
+
+## Features
+
+-   [x] **Distributed & Replicated Storage:** Files are replicated across multiple storage nodes to prevent data loss from a single point of failure.
+-   [x] **Fault Tolerance:** The system can withstand storage node failures. Restore requests are automatically redirected to healthy replicas, and a heartbeat mechanism tracks node health in real-time.
+-   [x] **Client-Side Encryption:** Strong AES encryption is applied on the client-side before any data is transmitted. Encryption is password-based, with keys derived using PBKDF2, ensuring only the user can access their data.
+-   [x] **Large File Support (Chunking):** Files larger than 30MB are automatically broken into 4MB chunks, allowing for the efficient backup of files of virtually any size without memory limitations.
+-   [x] **Automatic Background Sync:** Users can designate multiple folders to be monitored. The system uses `watchdog` to detect file creations, modifications, or deletions in real-time and automatically syncs the changes.
+-   [x] **Full Web-Based UI:** A clean, modern user interface built with Flask allows for all operations:
+    -   Manual single-file uploads.
+    -   Managing a watchlist of folders for automatic sync.
+    -   A categorized overview of all backed-up files.
+    -   Restoring and deleting files.
+    -   Viewing the real-time status of all storage nodes.
+-   [x] **Easy Deployment:** Comes with simple batch scripts to automate the setup and launching of all system components.
+
+## System Architecture
+
+The application is composed of three main components that work together:
+
+1.  **Coordinator Node (`coordinator.py`)**
+    -   Acts as the central "brain" or orchestrator of the system.
+    -   It does not store any file data itself.
+    -   Maintains a database of all file metadata (hashes, chunk lists, locations).
+    -   Tracks the health and status of all registered Storage Nodes via a heartbeat mechanism.
+    -   Assigns Storage Nodes for new backups using a round-robin strategy to distribute the load.
+
+2.  **Storage Nodes (`storage_node.py`)**
+    -   These are the "workhorses" that perform the physical storage.
+    -   They provide a simple API to `store` and `retrieve` data blobs by their SHA-256 hash.
+    -   They have no knowledge of files, users, or the overall system state; they only store the data they are given.
+    -   Multiple instances of this script can be run to scale the system's storage capacity and redundancy.
+
+3.  **Client Application (`web_ui.py`)**
+    -   This is the user-facing component, providing a web dashboard for all interactions.
+    -   It handles all client-side logic: hashing, chunking, and encryption.
+    -   It communicates with the Coordinator to get instructions and log metadata.
+    * It communicates directly with the Storage Nodes to upload and download file data.
+    * It runs a background `watchdog` thread to monitor local folders for automatic synchronization.
+
+## Tech Stack
+
+-   **Language:** Python 3
+-   **Web Framework:** Flask
+-   **Networking:** Requests
+-   **Encryption:** Cryptography
+-   **File System Monitoring:** Watchdog
+
+---
+
+## Getting Started
+
+Follow these instructions to set up and run the project on a new Windows machine.
+
+### Prerequisites
+
+-   Python 3 installed and added to your PATH.
+
+### 1. Create a `requirements.txt` File
+
+On your original development PC, run the following command in your activated virtual environment to capture all necessary libraries:
+```bash
+pip freeze > requirements.txt
+```
+Make sure this file is in the project directory.
+
+### 2. Create the Setup Script (`setup.bat`)
+
+Create a file named `setup.bat` in your project root with the following content. This script will create a virtual environment and install all dependencies.
+
+```batch
+@echo off
+TITLE Project Setup Script
+
+ECHO [1/3] Creating Python virtual environment ('venv')...
+python -m venv venv
+
+ECHO [2/3] Activating virtual environment...
+CALL .\venv\Scripts\activate
+
+ECHO [3/3] Installing required libraries from requirements.txt...
+pip install -r requirements.txt
+
+ECHO.
+ECHO Setup complete!
+pause
+```
+
+### 3. Create the Start Script (`start_all.bat`)
+
+Create a file named `start_all.bat` in your project root. This will launch all system components.
+
+```batch
+@echo off
+TITLE Main Control Script
+
+ECHO Activating Python virtual environment...
+CALL .\venv\Scripts\activate
+
+ECHO Starting all servers in separate windows...
+
+ECHO [1/4] Starting Coordinator on port 5002...
+start "Coordinator (Port 5002)" python coordinator.py
+timeout /t 2 > NUL
+
+ECHO [2/4] Starting Storage Node 1 on port 5001...
+start "Storage Node 1 (Port 5001)" python storage_node.py 5001
+timeout /t 1 > NUL
+
+ECHO [3/4] Starting Storage Node 2 on port 5003...
+start "Storage Node 2 (Port 5003)" python storage_node.py 5003
+timeout /t 2 > NUL
+
+ECHO [4/4] Starting Web UI on port 5000...
+start "Web UI Client (Port 5000)" python web_ui.py
+
+ECHO All components launched.
+```
+
+### 4. Create the Stop Script (`stop_all.bat`)
+
+Create a file named `stop_all.bat` in your project root. This will terminate all server processes.
+
+```batch
+@echo off
+TITLE Stop All Servers
+
+ECHO Shutting Down All System Components...
+
+taskkill /F /FI "WINDOWTITLE eq Web UI Client (Port 5000)" > NUL
+taskkill /F /FI "WINDOWTITLE eq Coordinator (Port 5002)" > NUL
+taskkill /F /FI "WINDOWTITLE eq Storage Node 1 (Port 5001)" > NUL
+taskkill /F /FI "WINDOWTITLE eq Storage Node 2 (Port 5003)" > NUL
+
+ECHO All server processes have been terminated.
+pause
+```
+
+## How to Run
+
+1.  **On a new PC:**
+    a. Copy the entire project folder over.
+    b. Double-click **`setup.bat`** and wait for it to complete.
+2.  **To start the application:** Double-click **`start_all.bat`**. This will open the four server windows.
+3.  **Access the UI:** Open your web browser and navigate to **`http://127.0.0.1:5000`**.
+4.  **To stop the application:** Double-click **`stop_all.bat`**.
+
+## Group Members
+
+-   [cite_start]Muhammad Hassan – (FA22-BCS-100) 
+-   [cite_start]Baseer Ahmed Tahir – (FA22-BCS-104)

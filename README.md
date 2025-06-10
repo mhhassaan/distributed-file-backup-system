@@ -50,101 +50,12 @@ The application is composed of three main components that work together:
 -   **File System Monitoring:** Watchdog
 
 ---
-
-## Getting Started
-
-Follow these instructions to set up and run the project on a new Windows machine.
-
-### Prerequisites
-
--   Python 3 installed and added to your PATH.
-
-### 1. Create a `requirements.txt` File
-
-On your original development PC, run the following command in your activated virtual environment to capture all necessary libraries:
-```bash
-pip freeze > requirements.txt
-```
-Make sure this file is in the project directory.
-
-### 2. Create the Setup Script (`setup.bat`)
-
-Create a file named `setup.bat` in your project root with the following content. This script will create a virtual environment and install all dependencies.
-
-```batch
-@echo off
-TITLE Project Setup Script
-
-ECHO [1/3] Creating Python virtual environment ('venv')...
-python -m venv venv
-
-ECHO [2/3] Activating virtual environment...
-CALL .\venv\Scripts\activate
-
-ECHO [3/3] Installing required libraries from requirements.txt...
-pip install -r requirements.txt
-
-ECHO.
-ECHO Setup complete!
-pause
-```
-
-### 3. Create the Start Script (`start_all.bat`)
-
-Create a file named `start_all.bat` in your project root. This will launch all system components.
-
-```batch
-@echo off
-TITLE Main Control Script
-
-ECHO Activating Python virtual environment...
-CALL .\venv\Scripts\activate
-
-ECHO Starting all servers in separate windows...
-
-ECHO [1/4] Starting Coordinator on port 5002...
-start "Coordinator (Port 5002)" python coordinator.py
-timeout /t 2 > NUL
-
-ECHO [2/4] Starting Storage Node 1 on port 5001...
-start "Storage Node 1 (Port 5001)" python storage_node.py 5001
-timeout /t 1 > NUL
-
-ECHO [3/4] Starting Storage Node 2 on port 5003...
-start "Storage Node 2 (Port 5003)" python storage_node.py 5003
-timeout /t 2 > NUL
-
-ECHO [4/4] Starting Web UI on port 5000...
-start "Web UI Client (Port 5000)" python web_ui.py
-
-ECHO All components launched.
-```
-
-### 4. Create the Stop Script (`stop_all.bat`)
-
-Create a file named `stop_all.bat` in your project root. This will terminate all server processes.
-
-```batch
-@echo off
-TITLE Stop All Servers
-
-ECHO Shutting Down All System Components...
-
-taskkill /F /FI "WINDOWTITLE eq Web UI Client (Port 5000)" > NUL
-taskkill /F /FI "WINDOWTITLE eq Coordinator (Port 5002)" > NUL
-taskkill /F /FI "WINDOWTITLE eq Storage Node 1 (Port 5001)" > NUL
-taskkill /F /FI "WINDOWTITLE eq Storage Node 2 (Port 5003)" > NUL
-
-ECHO All server processes have been terminated.
-pause
-```
-
 ## How to Run
 
-1.  **On a new PC:**
+1.  **On Windows OS:**
     a. Copy the entire project folder over.
     b. Double-click **`setup.bat`** and wait for it to complete.
-2.  **To start the application:** Double-click **`start_all.bat`**. This will open the four server windows.
+2.  **To start the application:** Double-click **`start.bat`**. This will open the four server windows.
 3.  **Access the UI:** Open your web browser and navigate to **`http://127.0.0.1:5000`**.
 4.  **To stop the application:** Double-click **`stop_all.bat`**.
 

@@ -60,23 +60,25 @@ def get_storage_nodes():
 
 @app.route('/log-backup', methods=['POST'])
 def log_backup():
-    """Logs backup metadata directly into the in-memory dictionary."""
+    """
+    Logs backup metadata. Now handles both single-hash files and chunked files.
+    """
     global METADATA
     data = request.json
     filename = data.get('filename')
 
-    # Modify the global METADATA dictionary directly
+    # The client will now send a more detailed metadata payload
     METADATA[filename] = {
-        'hash': data.get('hash'),
+        'is_chunked': data.get('is_chunked', False),
+        'hash': data.get('hash'), # Will be None for chunked files
+        'chunk_hashes': data.get('chunk_hashes'), # Will be a list for chunked files
         'locations': data.get('locations'),
         'encrypted': data.get('encrypted', False)
     }
-    # Persist the change to disk
     save_metadata_to_disk()
     
     print(f"\n[DEBUG /log-backup] File logged. In-memory METADATA is now: {METADATA}\n")
     return jsonify({"message": "Backup logged successfully."})
-
 @app.route('/get-file-info/<filename>', methods=['GET'])
 def get_file_info(filename):
     """Retrieves file info directly from memory."""

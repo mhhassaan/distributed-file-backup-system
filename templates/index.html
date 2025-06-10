@@ -61,7 +61,13 @@
                 {% for file in files %}
                 <tr>
                     <td>{{ file.name }}</td>
-                    <td>{{ file.hash[:16] }}...</td>
+                    <td>
+                        {% if file.is_chunked %}
+                            (Chunked File)
+                        {% else %}
+                            {{ file.hash[:16] }}...
+                        {% endif %}
+                    </td>
                     <td style="white-space: nowrap;">
                         {% if file.encrypted %}
                             <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">
@@ -82,67 +88,7 @@
             </tbody>
         </table>
     </div>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log("✅ [1] DOM is ready, script is running!");
-
-        // --- Logic for password field visibility ---
-        function setupToggleButton(type) {
-            const checkbox = document.getElementById('encrypt-' + type);
-            const passwordField = document.getElementById('password-field-' + type);
-            if (checkbox && passwordField) {
-                passwordField.style.display = checkbox.checked ? 'block' : 'none';
-                checkbox.addEventListener('change', function() {
-                    passwordField.style.display = this.checked ? 'block' : 'none';
-                });
-            } else {
-                // This will tell us if an element was not found
-                console.error("Could not find elements for setupToggleButton: " + type);
-            }
-        }
-        
-        console.log("⚙️ [2] Setting up password toggles...");
-        setupToggleButton('single');
-        setupToggleButton('sync');
-        console.log("👍 [3] Password toggles set up.");
-
-
-        // --- Logic for Restore Buttons ---
-        console.log("⚙️ [4] Querying for restore buttons...");
-        const restoreButtons = document.querySelectorAll('.js-restore-button');
-        console.log(`Found ${restoreButtons.length} restore button(s).`);
-
-        restoreButtons.forEach(function(button) {
-            console.log("Attaching click listener to restore button for file: " + button.getAttribute('data-filename'));
-            button.addEventListener('click', function() {
-                const filename = this.getAttribute('data-filename');
-                const password = prompt("Please enter the encryption password for '" + filename + "':", "");
-                if (password !== null && password !== "") {
-                    window.location.href = `/restore/${filename}?password=${encodeURIComponent(password)}`;
-                }
-            });
-        });
-        console.log("👍 [5] Restore button listeners attached.");
-
-
-        // --- Logic for Delete Forms ---
-        console.log("⚙️ [6] Querying for delete forms...");
-        const deleteForms = document.querySelectorAll('.js-delete-form');
-        console.log(`Found ${deleteForms.length} delete form(s).`);
-
-        deleteForms.forEach(function(form) {
-            console.log("Attaching submit listener to delete form for file: " + form.getAttribute('data-filename'));
-            form.addEventListener('submit', function(event) {
-                const filename = this.getAttribute('data-filename');
-                if (!confirm('Are you sure you want to permanently delete the backup for "' + filename + '"?')) {
-                    event.preventDefault();
-                }
-            });
-        });
-        console.log("👍 [7] Delete form listeners attached. Script finished!");
-    });
-</script>
-    <!-- <script>
+    <script>
         // This function runs once the entire page is loaded
         document.addEventListener('DOMContentLoaded', function() {
             console.log("DOM is ready, script is running!");
@@ -183,6 +129,6 @@
                 });
             });
         });
-    </script> -->
+    </script>
 </body>
 </html>

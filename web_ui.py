@@ -4,7 +4,7 @@ import requests
 import hashlib
 import io
 import base64
-from flask import Flask, request, render_template, redirect, url_for, send_file, flash
+from flask import Flask, request, render_template, redirect, url_for, send_file, flash, after_this_request
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -19,6 +19,8 @@ COORDINATOR_URL = "http://127.0.0.1:5002"
 BACKUP_FOLDER = 'files_to_backup'
 CLIENT_HASH_DB = 'client_local_hashes.json'
 SALT = b'pdc-project-salt' # Static salt for the key derivation function
+CHUNK_THRESHOLD = 30 * 1024 * 1024  # 30 MB
+CHUNK_SIZE = 4 * 1024 * 1024       # 4 MB
 
 # --- Key Derivation Helper Function ---
 def derive_key(password: str) -> bytes:
@@ -46,51 +48,70 @@ def write_local_hashes(hashes):
         json.dump(hashes, f, indent=4)
 
 # --- Reusable Backup Logic ---
-def backup_single_file(file_data, filename, encrypt_file, password):
+def backup_single_file(filepath, filename, encrypt_file, password):
     """
-    Handles the entire backup process for a single file's data.
-    This function is now used by both single upload and folder sync.
+    Handles the backup process. Uses chunking for files larger than CHUNK_THRESHOLD.
     """
-    file_hash = hashlib.sha256(file_data).hexdigest()
-
     try:
-        # 1. Ask Coordinator for storage nodes
+        file_size = os.path.getsize(filepath)
+        
+        # 1. Ask Coordinator for storage nodes first
         response = requests.get(f"{COORDINATOR_URL}/get-storage-nodes")
         response.raise_for_status()
         storage_node_urls = response.json()['storage_node_urls']
 
-        # 2. Conditionally encrypt the data based on user choice
-        if encrypt_file:
-            print(f"Applying AES encryption for '{filename}'...")
-            key = derive_key(password)
-            fernet = Fernet(key)
-            data_to_upload = fernet.encrypt(file_data)
-        else:
-            print(f"Uploading '{filename}' without encryption...")
-            data_to_upload = file_data
-
-        # 3. Upload data to all assigned replica nodes
-        successful_locations = []
-        for node_url in storage_node_urls:
-            upload_url = f"{node_url}/store/{file_hash}"
-            requests.post(upload_url, data=data_to_upload).raise_for_status()
-            successful_locations.append(node_url)
+        # Determine if encryption will be used
+        fernet = Fernet(derive_key(password)) if encrypt_file and password else None
         
-        # 4. Log the successful backup with the Coordinator
         log_data = {
-            'filename': filename, 
-            'hash': file_hash, 
-            'locations': successful_locations,
+            'filename': filename,
+            'locations': storage_node_urls,
             'encrypted': encrypt_file
         }
+
+        # --- LOGIC FOR SMALL FILES ---
+        if file_size < CHUNK_THRESHOLD:
+            print(f"'{filename}' is a small file. Processing as a single block.")
+            with open(filepath, 'rb') as f:
+                file_data = f.read()
+            
+            file_hash = hashlib.sha256(file_data).hexdigest()
+            data_to_upload = fernet.encrypt(file_data) if fernet else file_data
+            
+            for node_url in storage_node_urls:
+                requests.post(f"{node_url}/store/{file_hash}", data=data_to_upload).raise_for_status()
+
+            log_data.update({'is_chunked': False, 'hash': file_hash})
+
+        # --- LOGIC FOR LARGE FILES (CHUNKING) ---
+        else:
+            print(f"'{filename}' is a large file. Starting chunking process...")
+            chunk_hashes = []
+            with open(filepath, 'rb') as f:
+                while True:
+                    chunk_data = f.read(CHUNK_SIZE)
+                    if not chunk_data:
+                        break # End of file
+                    
+                    chunk_hash = hashlib.sha256(chunk_data).hexdigest()
+                    chunk_hashes.append(chunk_hash)
+                    
+                    data_to_upload = fernet.encrypt(chunk_data) if fernet else chunk_data
+                    
+                    print(f"  Uploading chunk {len(chunk_hashes)} ({len(data_to_upload)} bytes) with hash {chunk_hash[:8]}...")
+                    for node_url in storage_node_urls:
+                        requests.post(f"{node_url}/store/{chunk_hash}", data=data_to_upload).raise_for_status()
+            
+            log_data.update({'is_chunked': True, 'chunk_hashes': chunk_hashes})
+
+        # Log the final metadata with the coordinator
         requests.post(f"{COORDINATOR_URL}/log-backup", json=log_data).raise_for_status()
-        
         print(f"Successfully backed up '{filename}'")
         return True
-    except requests.exceptions.RequestException as e:
+    
+    except Exception as e:
         print(f"An error occurred during backup of {filename}: {e}")
         return False
-
 # --- Flask Routes ---
 
 @app.route('/')
@@ -107,31 +128,36 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_file():
     """Handles the single file upload form."""
-    if 'file' not in request.files or request.files['file'].filename == '':
-        flash("No file selected for upload.", "error")
+    if 'file' not in request.files or not request.files['file'].filename:
+        flash("No file selected.", "error")
         return redirect(url_for('index'))
-
+        
     file = request.files['file']
     filename = file.filename
-    file_data = file.read()
+    # We must save the uploaded file temporarily to get a filepath for chunking
+    temp_filepath = os.path.join("temp_uploads", filename)
+    os.makedirs("temp_uploads", exist_ok=True)
+    file.save(temp_filepath)
 
-    encryption_enabled = 'encrypt' in request.form
     password = request.form.get('password', '')
-
+    encryption_enabled = 'encrypt' in request.form
     if encryption_enabled and not password:
-        flash("Encryption was selected, but no password was provided.", "error")
+        flash("Encryption selected, but no password provided.", "error")
+        os.remove(temp_filepath) # Clean up temp file
         return redirect(url_for('index'))
 
-    # Call our reusable backup function
-    if backup_single_file(file_data, filename, encryption_enabled, password):
-        # On success, update the local hash cache so the sync feature is aware of this file
-        local_hashes = read_local_hashes()
-        local_hashes[filename] = hashlib.sha256(file_data).hexdigest()
-        write_local_hashes(local_hashes)
-        flash(f"'{filename}' was uploaded successfully!", "success")
+    # Call the backup function with the filepath
+    if backup_single_file(temp_filepath, filename, encryption_enabled, password):
+        # Update local hash cache using the temp file
+        with open(temp_filepath, 'rb') as f:
+            local_hashes = read_local_hashes()
+            local_hashes[filename] = hashlib.sha256(f.read()).hexdigest()
+            write_local_hashes(local_hashes)
+        flash(f"'{filename}' uploaded successfully!", "success")
     else:
         flash(f"Failed to upload '{filename}'.", "error")
 
+    os.remove(temp_filepath) # Clean up the temporary file
     return redirect(url_for('index'))
 
 @app.route('/sync', methods=['POST'])
@@ -178,67 +204,80 @@ def sync_folder():
 
 @app.route('/restore/<filename>')
 def restore_file(filename):
-    """Handles restoring a file, with or without password decryption."""
+    """Handles restoring both single-block and chunked files with proper cleanup."""
     try:
-        # 1. Get file info from coordinator
         response = requests.get(f"{COORDINATOR_URL}/get-file-info/{filename}")
         response.raise_for_status()
         file_info = response.json()
-        locations = file_info['locations']
-        file_hash = file_info['hash']
-        is_encrypted = file_info.get('encrypted', False)
-        
         password = request.args.get('password', '')
-        if is_encrypted and not password:
-            flash("File is encrypted, but no password was provided for restore.", "error")
+        if file_info.get('encrypted') and not password:
+            flash("File is encrypted, but no password was provided.", "error")
             return redirect(url_for('index'))
-            
     except requests.exceptions.RequestException as e:
         flash(f"Could not get file info from coordinator: {e}", "error")
         return redirect(url_for('index'))
 
-    # 2. Try downloading from each replica location
-    downloaded_data = None
-    for node_url in locations:
-        try:
-            download_url = f"{node_url}/retrieve/{file_hash}"
-            response = requests.get(download_url, timeout=5)
-            response.raise_for_status()
-            downloaded_data = response.content
-            print(f"Download successful from {node_url}")
-            break 
-        except requests.exceptions.RequestException as e:
-            print(f"Failed to download from {node_url}: {e}. Trying next replica.")
+    locations = file_info['locations']
+    is_encrypted = file_info.get('encrypted', False)
+    fernet = Fernet(derive_key(password)) if is_encrypted else None
 
-    if downloaded_data is None:
-        flash("Could not restore file. All replicas are offline.", "error")
-        return redirect(url_for('index'))
+    # Create a temporary file for reassembly
+    temp_dir = "temp_uploads"
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_restore_path = os.path.join(temp_dir, filename)
+
+    try:
+        with open(temp_restore_path, 'wb') as output_file:
+            if not file_info.get('is_chunked'):
+                # --- SINGLE FILE RESTORE ---
+                file_hash = file_info['hash']
+                downloaded_data = None
+                for node_url in locations:
+                    try:
+                        response = requests.get(f"{node_url}/retrieve/{file_hash}", timeout=5)
+                        response.raise_for_status()
+                        downloaded_data = response.content
+                        break
+                    except requests.exceptions.RequestException:
+                        continue
+                if downloaded_data is None: raise Exception("All replicas failed.")
+                decrypted_data = fernet.decrypt(downloaded_data) if fernet else downloaded_data
+                output_file.write(decrypted_data)
+            else:
+                # --- CHUNKED FILE RESTORE ---
+                for i, chunk_hash in enumerate(file_info['chunk_hashes']):
+                    chunk_data = None
+                    for node_url in locations:
+                        try:
+                            response = requests.get(f"{node_url}/retrieve/{chunk_hash}", timeout=5)
+                            response.raise_for_status()
+                            chunk_data = response.content
+                            break
+                        except requests.exceptions.RequestException:
+                            continue
+                    if chunk_data is None: raise Exception(f"Failed to download chunk {i+1}.")
+                    decrypted_chunk = fernet.decrypt(chunk_data) if fernet else chunk_data
+                    output_file.write(decrypted_chunk)
+
+        # This registers a function to be called AFTER the main response is sent.
+        @after_this_request
+        def cleanup(response):
+            try:
+                os.remove(temp_restore_path)
+                print(f"Cleaned up temporary file: {temp_restore_path}")
+            except Exception as error:
+                app.logger.error("Error removing or closing downloaded file handle: %s", error)
+            return response
+
+        # Now, send the fully reassembled file from disk
+        return send_file(temp_restore_path, as_attachment=True, download_name=filename)
     
-    # 3. Conditionally decrypt the downloaded data
-    if is_encrypted:
-        try:
-            key = derive_key(password)
-            fernet = Fernet(key)
-            decrypted_data = fernet.decrypt(downloaded_data)
-        except InvalidToken:
-            flash("Decryption failed! The password may be incorrect.", "error")
-            return redirect(url_for('index'))
-        except Exception as e:
-            flash(f"An unknown decryption error occurred: {e}", "error")
-            return redirect(url_for('index'))
-    else:
-        decrypted_data = downloaded_data
-    
-    # 4. Verify data integrity and send file to user
-    if hashlib.sha256(decrypted_data).hexdigest() != file_hash:
-        flash("File integrity check failed after download. Data may be corrupt.", "error")
+    except Exception as e:
+        flash(f"An error occurred during restore: {e}", "error")
+        # Clean up the partial file if an error occurred during assembly
+        if os.path.exists(temp_restore_path):
+            os.remove(temp_restore_path)
         return redirect(url_for('index'))
-        
-    return send_file(
-        io.BytesIO(decrypted_data),
-        as_attachment=True,
-        download_name=filename
-    )
 
 @app.route('/delete/<filename>', methods=['POST'])
 def delete_backup(filename):

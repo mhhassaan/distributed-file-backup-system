@@ -21,6 +21,9 @@
         .container { 
             max-width: 1400px; 
             margin: auto; 
+        }
+
+        .main-content-wrapper {
             background: rgba(30, 41, 59, 0.8);
             backdrop-filter: blur(10px);
             padding: 3rem; 
@@ -40,14 +43,14 @@
             font-weight: 700;
             letter-spacing: -0.025em;
         }
-        
-        .main-layout {
+
+        .top-layout {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 3rem;
-            margin-top: 2rem;
+            gap: 2rem;
+            margin-bottom: 2rem;
         }
-        
+
         .left-panel, .right-panel {
             background: rgba(15, 23, 42, 0.3);
             border-radius: 16px;
@@ -55,21 +58,12 @@
             border: 1px solid rgba(148, 163, 184, 0.1);
         }
         
-        .right-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 2rem;
-        }
-        
         .synced-section, .individual-section {
-            background: rgba(30, 41, 59, 0.4);
-            border-radius: 12px;
-            padding: 1.5rem;
+            background: rgba(15, 23, 42, 0.3);
+            border-radius: 16px;
+            padding: 2rem;
             border: 1px solid rgba(148, 163, 184, 0.1);
-        }
-        
-        .individual-section {
-            flex: 1;
+            margin-top: 2rem;
         }
         
         h2 { 
@@ -184,6 +178,15 @@
         tr:hover {
             background: rgba(148, 163, 184, 0.05);
         }
+
+        /* --- MODIFIED FOR VERTICAL ALIGNMENT --- */
+        td.actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: stretch;
+            width: 150px; /* Optional: set a fixed width for the actions column */
+        }
         
         .btn { 
             padding: 0.75rem 1.5rem; 
@@ -194,13 +197,14 @@
             border: none; 
             font-size: 0.875rem; 
             font-weight: 600; 
-            margin-right: 0.5rem;
+            margin: 0;
             transition: all 0.3s ease;
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            font-family: inherit;
+            justify-content: center; /* Center text inside button */
+            width: 100%; /* Make button take full width of its container */
         }
+        /* --- END MODIFICATION --- */
         
         .btn:hover {
             transform: translateY(-2px);
@@ -245,7 +249,7 @@
         }
         
         form.inline-form { 
-            display: inline-block; 
+            display: block; /* Changed from inline-block to allow full width */
             margin: 0; 
         }
         
@@ -274,7 +278,6 @@
             color: #94a3b8;
             border: 1px solid rgba(148, 163, 184, 0.2);
             font-size: 0.875rem;
-
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -358,31 +361,26 @@
             font-style: italic;
         }
         
-        .sync-section {
+        .sync-section-controls {
             margin-top: 2rem;
             padding-top: 2rem;
             border-top: 1px solid rgba(148, 163, 184, 0.2);
         }
 
         .hash-display {
-            cursor: pointer;
-            text-decoration: underline dotted;
-            color: #94a3b8; /* Changed color to better match the theme */
+            color: #94a3b8; 
             font-family: 'JetBrains Mono', 'Fira Code', monospace;
             background: rgba(15, 23, 42, 0.6);
             padding: 5px 8px;
             border-radius: 6px;
             border: 1px solid rgba(148, 163, 184, 0.2);
+            word-break: break-all;
         }
+
         /* Responsive design */
         @media (max-width: 1200px) {
-            .main-layout {
+            .top-layout {
                 grid-template-columns: 1fr;
-                gap: 2rem;
-            }
-            
-            .container {
-                padding: 2rem;
             }
         }
         
@@ -391,7 +389,7 @@
                 padding: 1rem;
             }
             
-            .container {
+            .main-content-wrapper {
                 padding: 1.5rem;
             }
             
@@ -399,7 +397,7 @@
                 font-size: 2rem;
             }
             
-            .left-panel, .right-panel {
+            .left-panel, .right-panel, .synced-section, .individual-section {
                 padding: 1.5rem;
             }
         }
@@ -421,167 +419,105 @@
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(148, 163, 184, 0.5);
         }
+
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Distributed Backup System</h1>
+        <div class="main-content-wrapper">
+            <h1>Distributed Backup System</h1>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="flash-message flash-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        <div class="main-layout">
-            <!-- Left Panel: Upload and Sync Controls -->
-            <div class="left-panel">
-                <h2>Manual File Upload</h2>
-                <form action="/upload" method="post" enctype="multipart/form-data">
-                    <div class="form-group">
-                        <label for="file-upload">Select File</label>
-                        <input type="file" id="file-upload" name="file" required>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="encrypt-single" name="encrypt" value="true">
-                        <label for="encrypt-single">Encrypt Backup</label>
-                    </div>
-                    <div id="password-field-single" style="display:none;" class="form-group">
-                        <label for="password-single">Password:</label>
-                        <input type="password" id="password-single" name="password" placeholder="Enter encryption password">
-                    </div>
-                    <button type="submit" class="btn">Upload File</button>
-                </form>
-
-                <hr class="section-divider">
-
-                <h2>Automatic Folder Sync</h2>
-                <p>Add folders here to be monitored for automatic backups. You must provide the full, absolute path.</p>
-                <form action="/add-folder" method="post">
-                    <div class="form-group">
-                        <label for="folder_path">Folder Path to Watch:</label>
-                        <input type="text" id="folder_path" name="folder_path" placeholder="/path/to/your/folder" required>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="encrypt-watcher" name="encrypt" value="true">
-                        <label for="encrypt-watcher">Encrypt backups from this folder</label>
-                    </div>
-                    <div id="password-field-watcher" style="display:none;" class="form-group">
-                        <label for="password-watcher">Password:</label>
-                        <input type="password" id="password-watcher" name="password" placeholder="Enter encryption password">
-                    </div>
-                    <button type="submit" class="btn">Add Folder</button>
-                </form>
-
-                <h3>Currently Monitored Folders</h3>
-                <div class="folder-list">
-                    {% for folder in watched_folders %}
-                    <div class="folder-list-item">
-                        <div style="display: flex; align-items: center; gap: 1rem;">
-                            <span class="folder-path" title="{{ folder.path }}">{{ folder.path }}</span>
-                            {% if folder.encrypt %}
-                                <span class="tag tag-encrypted">Encrypted</span>
-                            {% else %}
-                                <span class="tag tag-unencrypted">Unencrypted</span>
-                            {% endif %}
-                        </div>
-                        <form action="/remove-folder" method="post" class="inline-form">
-                            <input type="hidden" name="folder_path" value="{{ folder.path }}">
-                            <button type="submit" class="btn btn-delete">Remove</button>
-                        </form>
-                    </div>
-                    {% else %}
-                    <div class="no-data">No folders are currently being monitored.</div>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
                     {% endfor %}
-                </div>
-                
-                <div class="sync-section">
-                    <p>You can also trigger a manual sync. This will re-check every file in all watched folders and upload any new or modified versions.</p>
-                    <form action="/force-sync" method="post">
-                        <button type="submit" class="btn btn-sync">Force Sync All Folders</button>
+                {% endif %}
+            {% endwith %}
+    
+            <div class="top-layout">
+                <div class="left-panel">
+                    <h2>Manual File Upload</h2>
+                    <form action="/upload" method="post" enctype="multipart/form-data" style="margin-bottom:0;">
+                        <div class="form-group">
+                            <label for="file-upload">Select File</label>
+                            <input type="file" id="file-upload" name="file" required>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="encrypt-single" name="encrypt" value="true">
+                            <label for="encrypt-single">Encrypt Backup</label>
+                        </div>
+                        <div id="password-field-single" style="display:none;" class="form-group">
+                            <label for="password-single">Password:</label>
+                            <input type="password" id="password-single" name="password" placeholder="Enter encryption password">
+                        </div>
+                        <button type="submit" class="btn">Upload File</button>
                     </form>
                 </div>
-            </div>
-
-            <!-- Right Panel: Backup Overview -->
-            <div class="right-panel">
-                <!-- Synced Folders Section (Top Right) -->
-                <div class="synced-section">
-                    <h2>Synced Folders</h2>
-                    {% if synced_folders %}
-                        {% for folder_path, files_in_folder in synced_folders.items() %}
-                            <h4>Folder: <span class="folder-path">{{ folder_path }}</span></h4>
-                            <table>
-                                <thead><tr><th>Filename</th><th>Details</th><th>Action</th></tr></thead>
-                                <tbody>
-                                    {% for file in files_in_folder %}
-                                    <tr>
-                                        <td>{{ file.name }}</td>
-                                        <td>{% if file.is_chunked %}
-                                                (Chunked File)
-                                            {% else %}
-                                            Hash: 
-                                            <button type="button" class="hash-display" 
-                                                    data-full-hash="{{ file.hash }}" 
-                                                    onclick="showFullHash(this)"
-                                                    title="Click to see full hash">
-                                                {{ file.hash[:16] }}...
-                                            </button>
-                                            {% endif %}</td>
-                                        <td style="white-space: nowrap;">
-                                            {% if file.encrypted %}
-                                                <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">Restore</button>
-                                            {% else %}
-                                                <a href="/restore/{{ file.name }}" class="btn btn-restore">Restore</a>
-                                            {% endif %}
-                                            <form action="/delete/{{ file.name }}" method="post" class="inline-form js-delete-form" data-filename="{{ file.name }}">
-                                                <button type="submit" class="btn btn-delete">Delete</button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        {% endfor %}
-                    {% else %}
-                        <div class="no-data">No files from synced folders have been backed up yet.</div>
-                    {% endif %}
+    
+                <div class="right-panel">
+                    <h2>Automatic Folder Sync</h2>
+                    <form action="/add-folder" method="post">
+                        <p>Add folders here to be monitored for automatic backups. You must provide the full, absolute path.</p>
+                        <div class="form-group">
+                            <label for="folder_path">Folder Path to Watch:</label>
+                            <input type="text" id="folder_path" name="folder_path" placeholder="/path/to/your/folder" required>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="encrypt-watcher" name="encrypt" value="true">
+                            <label for="encrypt-watcher">Encrypt backups from this folder</label>
+                        </div>
+                        <div id="password-field-watcher" style="display:none;" class="form-group">
+                            <label for="password-watcher">Password:</label>
+                            <input type="password" id="password-watcher" name="password" placeholder="Enter encryption password">
+                        </div>
+                        <button type="submit" class="btn">Add Folder</button>
+                    </form>
+                    <div class="sync-section-controls">
+                        <p>You can also trigger a manual sync of all watched folders.</p>
+                        <form action="/force-sync" method="post" style="margin-bottom: 0;">
+                            <button type="submit" class="btn btn-sync">Force Sync All Folders</button>
+                        </form>
+                   </div>
                 </div>
-
-                <!-- Individual Uploads Section (Bottom Right) -->
-                <div class="individual-section">
-                    <h2>Individual Uploads</h2>
-                    {% if single_files %}
+            </div>
+    
+            <div class="synced-section">
+                <h2>Synced Folders</h2>
+                 <h3>Currently Monitored Folders</h3>
+                 <div class="folder-list">
+                     {% for folder in watched_folders %}
+                     <div class="folder-list-item">
+                         <div style="display: flex; align-items: center; gap: 1em; flex-grow: 1; min-width: 0;">
+                             <span class="folder-path" title="{{ folder.path }}">{{ folder.path }}</span>
+                             {% if folder.encrypt %}
+                                 <span class="tag tag-encrypted">Encrypted</span>
+                             {% else %}
+                                 <span class="tag tag-unencrypted">Unencrypted</span>
+                             {% endif %}
+                         </div>
+                         <form action="/remove-folder" method="post" class="inline-form">
+                             <input type="hidden" name="folder_path" value="{{ folder.path }}">
+                             <button type="submit" class="btn btn-delete">Remove</button>
+                         </form>
+                     </div>
+                     {% else %}
+                     <div class="no-data">No folders are currently being monitored.</div>
+                     {% endfor %}
+                 </div>
+                <hr class="section-divider">
+                {% if synced_folders %}
+                    {% for folder_path, files_in_folder in synced_folders.items() %}
+                        <h4>Backed up files from: <span class="folder-path">{{ folder_path }}</span></h4>
                         <table>
-                            <thead><tr><th>Filename</th><th>Details</th><th>Action</th></tr></thead>
+                            <thead><tr><th>Filename</th><th>Details (Full Hash)</th><th>Action</th></tr></thead>
                             <tbody>
-                                {% for file in single_files %}
+                                {% for file in files_in_folder %}
                                 <tr>
                                     <td>{{ file.name }}</td>
-                                    <td>
-                                        <div>{% if file.is_chunked %}
-                                                (Chunked File)
-                                            {% else %}
-                                            Hash: 
-                                            <button type="button" class="hash-display" 
-                                                    data-full-hash="{{ file.hash }}" 
-                                                    onclick="showFullHash(this)"
-                                                    title="Click to see full hash">
-                                                {{ file.hash[:16] }}...
-                                            </button>
-                                            {% endif %}</div>
-                                        <div style="margin-top: 8px;">
-                                            {% if file.encrypted %}
-                                                <span class="tag tag-encrypted">Encrypted</span>
-                                            {% else %}
-                                                <span class="tag tag-unencrypted">Unencrypted</span>
-                                            {% endif %}
-                                        </div>
-                                    </td>
-                                    <td style="white-space: nowrap;">
-                                         {% if file.encrypted %}
+                                    <td><div class="hash-display">{{ file.hash }}</div></td>
+                                    <td class="actions">
+                                        {% if file.encrypted %}
                                             <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">Restore</button>
                                         {% else %}
                                             <a href="/restore/{{ file.name }}" class="btn btn-restore">Restore</a>
@@ -594,21 +530,53 @@
                                 {% endfor %}
                             </tbody>
                         </table>
-                    {% else %}
-                        <div class="no-data">No individual files have been backed up yet.</div>
-                    {% endif %}
-                </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="no-data">No files from synced folders have been backed up yet.</div>
+                {% endif %}
+            </div>
+    
+            <div class="individual-section">
+                <h2>Individual Uploads</h2>
+                {% if single_files %}
+                    <table>
+                        <thead><tr><th>Filename</th><th>Details (Full Hash)</th><th>Action</th></tr></thead>
+                        <tbody>
+                            {% for file in single_files %}
+                            <tr>
+                                <td>{{ file.name }}</td>
+                                <td>
+                                    <div class="hash-display">{{ file.hash }}</div>
+                                    <div style="margin-top: 8px;">
+                                        {% if file.encrypted %}
+                                            <span class="tag tag-encrypted">Encrypted</span>
+                                        {% else %}
+                                            <span class="tag tag-unencrypted">Unencrypted</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td class="actions">
+                                   {% if file.encrypted %}
+                                        <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">Restore</button>
+                                    {% else %}
+                                        <a href="/restore/{{ file.name }}" class="btn btn-restore">Restore</a>
+                                    {% endif %}
+                                    <form action="/delete/{{ file.name }}" method="post" class="inline-form js-delete-form" data-filename="{{ file.name }}">
+                                        <button type="submit" class="btn btn-delete">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div class="no-data">No individual files have been backed up yet.</div>
+                {% endif %}
             </div>
         </div>
     </div>
 
     <script>
-
-        function showFullHash(element) {
-            const fullHash = element.getAttribute('data-full-hash');
-            alert('Full File Hash:\n\n' + fullHash);
-        }
-
         function setupToggleButton(type) {
             const checkbox = document.getElementById('encrypt-' + type);
             const passwordField = document.getElementById('password-field-' + type);

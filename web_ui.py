@@ -1,239 +1,87 @@
-# web_ui.py (Updated)
 import os
 import json
 import requests
 import hashlib
 import io
-from flask import Flask, request, render_template, redirect, url_for, send_file
+import base64
+from flask import Flask, request, render_template, redirect, url_for, send_file, flash
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.exceptions import InvalidKey # Correct exception for decryption failures
 
 app = Flask(__name__)
-
+# A secret key is required for flashing messages to the user
+app.secret_key = os.urandom(24) 
 
 # --- Configuration ---
-COORDINATOR_URL = "http://127.0.0.1:5002" # <-- We now talk to the coordinator
-ENCRYPTION_KEY = b'fBNnPtgoyrcbKzhtIwB2ThfWoCmBdopq8m9ty2EWyko='
-BACKUP_FOLDER = 'files_to_backup'  # The folder we will monitor for changes
-CLIENT_HASH_DB = 'client_local_hashes.json' # Local file to store hashes 
+COORDINATOR_URL = "http://127.0.0.1:5002"
+BACKUP_FOLDER = 'files_to_backup'
+CLIENT_HASH_DB = 'client_local_hashes.json'
+SALT = b'pdc-project-salt' # Static salt for the key derivation function
 
-# --- Helper functions for the local hash database ---
+# --- Key Derivation Helper Function ---
+def derive_key(password: str) -> bytes:
+    """Derives a valid Fernet key from a user password using PBKDF2."""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=SALT,
+        iterations=480000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+    return key
+
+# --- Local Hash DB Helper Functions ---
 def read_local_hashes():
+    """Reads the client's local cache of file hashes."""
     if not os.path.exists(CLIENT_HASH_DB) or os.path.getsize(CLIENT_HASH_DB) == 0:
         return {}
     with open(CLIENT_HASH_DB, 'r') as f:
         return json.load(f)
 
 def write_local_hashes(hashes):
+    """Writes to the client's local cache of file hashes."""
     with open(CLIENT_HASH_DB, 'w') as f:
         json.dump(hashes, f, indent=4)
 
-@app.route('/')
-def index():
-    """Render the main page by fetching the file list from the coordinator."""
-    try:
-        response = requests.get(f"{COORDINATOR_URL}/list-files")
-        response.raise_for_status()
-        files = response.json()
-    except requests.exceptions.RequestException:
-        files = [] # If coordinator is down, show an empty list
-    return render_template('index.html', files=files)
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    file = request.files['file']
-    if not file:
-        return "No file selected", 400
-
-    file_data = file.read()
-    original_filename = file.filename
-    file_hash = hashlib.sha256(file_data).hexdigest()
-
-    # 1. Ask Coordinator for storage nodes (plural)
-    try:
-        response = requests.get(f"{COORDINATOR_URL}/get-storage-nodes") # <-- Updated endpoint
-        response.raise_for_status()
-        storage_node_urls = response.json()['storage_node_urls'] # <-- Expecting a list
-    except requests.exceptions.RequestException as e:
-        return f"Could not get storage nodes from coordinator: {e}", 500
-
-    # 2. Encrypt and upload to ALL assigned storage nodes
-    fernet = Fernet(ENCRYPTION_KEY)
-    encrypted_data = fernet.encrypt(file_data)
-    
-    successful_locations = []
-    for node_url in storage_node_urls:
-        try:
-            upload_url = f"{node_url}/store/{file_hash}"
-            requests.post(upload_url, data=encrypted_data).raise_for_status()
-            successful_locations.append(node_url)
-            print(f"Successfully uploaded to {node_url}")
-        except requests.exceptions.RequestException as e:
-            print(f"Failed to upload to {node_url}: {e}")
-    
-    if not successful_locations:
-        return "File upload failed on all storage nodes.", 500
-
-    # 3. Log the successful backup locations with the Coordinator
-    try:
-        log_data = {'filename': original_filename, 'hash': file_hash, 'locations': successful_locations}
-        requests.post(f"{COORDINATOR_URL}/log-backup", json=log_data).raise_for_status()
-    except requests.exceptions.RequestException as e:
-        return f"Uploaded file but could not log with coordinator: {e}", 500
-
-    return redirect(url_for('index'))
-
-
-@app.route('/restore/<filename>')
-def restore_file(filename):
-    # 1. Ask Coordinator for the file's locations and hash
-    try:
-        response = requests.get(f"{COORDINATOR_URL}/get-file-info/{filename}")
-        response.raise_for_status()
-        file_info = response.json()
-        locations = file_info['locations']
-        file_hash = file_info['hash']
-        is_encrypted = file_info.get('encrypted', False) # <-- Get the flag from coordinator
-        
-    except requests.exceptions.RequestException as e:
-        return f"Could not get file info from coordinator: {e}", 500
-
-    # 2. Try downloading from each location until one succeeds
-    encrypted_data = None
-    for node_url in locations:
-        try:
-            print(f"Attempting to download from {node_url}...")
-            download_url = f"{node_url}/retrieve/{file_hash}"
-            response = requests.get(download_url, timeout=5)
-            response.raise_for_status()
-            encrypted_data = response.content
-            print("Download successful!")
-            break 
-        except requests.exceptions.RequestException as e:
-            print(f"Failed to download from {node_url}: {e}. Trying next replica.")
-
-    if encrypted_data is None:
-        return "Could not restore file. All replicas are offline.", 500
-    
-     # *** NEW: Conditional Decryption ***
-    # The client must be able to decrypt its backed-up files 
-    if is_encrypted:
-        print(f"Decrypting '{filename}'...")
-        fernet = Fernet(ENCRYPTION_KEY)
-        decrypted_data = fernet.decrypt(encrypted_data)
-    else:
-        print(f"'{filename}' was not encrypted. Skipping decryption.")
-        decrypted_data = encrypted_data # The data is already in its original form
-
-
-    # 3. Decrypt and verify
-    fernet = Fernet(ENCRYPTION_KEY)
-    decrypted_data = fernet.decrypt(encrypted_data)
-    if hashlib.sha256(decrypted_data).hexdigest() != file_hash:
-        return "File integrity check failed!", 500
-        
-    # 4. THE MISSING LINE: Return the decrypted file to the browser
-    return send_file(
-        io.BytesIO(decrypted_data),
-        as_attachment=True,
-        download_name=filename
-    )
-
-@app.route('/sync', methods=['POST'])
-def sync_folder():
+# --- Reusable Backup Logic ---
+def backup_single_file(file_data, filename, encrypt_file, password):
     """
-    Scans the backup folder, detects changes, and uploads only new/modified files.
+    Handles the entire backup process for a single file's data.
+    This function is now used by both single upload and folder sync.
     """
-    print("\n--- Starting Synchronization Process ---")
-    
-    # Create backup folder if it doesn't exist
-    if not os.path.exists(BACKUP_FOLDER):
-        os.makedirs(BACKUP_FOLDER)
-
-
-    # *** NEW: Check if the encryption checkbox was ticked ***
-    encryption_enabled = 'encrypt' in request.form
-    print(f"Encryption enabled for this sync: {encryption_enabled}")
-    
-    # 1. Load the last known hashes from our local file 
-    local_hashes = read_local_hashes()
-    files_in_folder = os.listdir(BACKUP_FOLDER)
-    
-    # 2. Iterate through files and check for changes
-    for filename in files_in_folder:
-        filepath = os.path.join(BACKUP_FOLDER, filename)
-        if not os.path.isfile(filepath):
-            continue
-
-        # 3. Calculate current file hash 
-        with open(filepath, 'rb') as f:
-            current_hash = hashlib.sha256(f.read()).hexdigest()
-
-        # 4. Compare with stored hash to detect changes 
-        if local_hashes.get(filename) == current_hash:
-            print(f"'{filename}' is unchanged. Skipping.")
-            continue # Skip to the next file
-        
-        # If file is new or modified, start the backup process
-        print(f"'{filename}' is new or modified. Backing up...")
-        if backup_single_file(filepath, filename, encryption_enabled):
-             # Update local hash on successful backup
-            local_hashes[filename] = current_hash
-        else:
-            print(f"Failed to backup '{filename}'. Will retry on next sync.")
-
-    # 5. Save the updated hashes back to the local file
-    write_local_hashes(local_hashes)
-    print("--- Synchronization Process Finished ---\n")
-    return redirect(url_for('index'))
-
-def backup_single_file(filepath, filename, encrypt_file):
-    """Refactored backup logic for a single file."""
-    with open(filepath, 'rb') as f:
-        file_data = f.read()
     file_hash = hashlib.sha256(file_data).hexdigest()
 
     try:
-        # Ask Coordinator for nodes
+        # 1. Ask Coordinator for storage nodes
         response = requests.get(f"{COORDINATOR_URL}/get-storage-nodes")
         response.raise_for_status()
         storage_node_urls = response.json()['storage_node_urls']
 
-        # Encrypt and upload to all nodes 
-        fernet = Fernet(ENCRYPTION_KEY)
-        encrypted_data = fernet.encrypt(file_data)
-        
-        successful_locations = []
-        for node_url in storage_node_urls:
-            upload_url = f"{node_url}/store/{file_hash}"
-            requests.post(upload_url, data=encrypted_data).raise_for_status()
-            successful_locations.append(node_url)
-        
-        # Log backup with Coordinator 
-        # log_data = {'filename': filename, 'hash': file_hash, 'locations': successful_locations}
-        # requests.post(f"{COORDINATOR_URL}/log-backup", json=log_data).raise_for_status()
-
-        # *** NEW: Conditional Encryption ***
-        # Per the proposal, we apply encryption on the client side before transmission 
+        # 2. Conditionally encrypt the data based on user choice
         if encrypt_file:
             print(f"Applying AES encryption for '{filename}'...")
-            fernet = Fernet(ENCRYPTION_KEY)
+            key = derive_key(password)
+            fernet = Fernet(key)
             data_to_upload = fernet.encrypt(file_data)
         else:
             print(f"Uploading '{filename}' without encryption...")
-            data_to_upload = file_data # Upload the raw data
+            data_to_upload = file_data
 
-        # ... (upload loop is the same, but uses data_to_upload) ...
+        # 3. Upload data to all assigned replica nodes
+        successful_locations = []
         for node_url in storage_node_urls:
             upload_url = f"{node_url}/store/{file_hash}"
             requests.post(upload_url, data=data_to_upload).raise_for_status()
             successful_locations.append(node_url)
         
-        # Log backup with Coordinator, including encryption status
+        # 4. Log the successful backup with the Coordinator
         log_data = {
             'filename': filename, 
             'hash': file_hash, 
             'locations': successful_locations,
-            'encrypted': encrypt_file # <-- Send the encryption status
+            'encrypted': encrypt_file
         }
         requests.post(f"{COORDINATOR_URL}/log-backup", json=log_data).raise_for_status()
         
@@ -242,6 +90,179 @@ def backup_single_file(filepath, filename, encrypt_file):
     except requests.exceptions.RequestException as e:
         print(f"An error occurred during backup of {filename}: {e}")
         return False
+
+# --- Flask Routes ---
+
+@app.route('/')
+def index():
+    """Renders the main page with the list of backed-up files from the coordinator."""
+    try:
+        response = requests.get(f"{COORDINATOR_URL}/list-files")
+        response.raise_for_status()
+        files = response.json()
+    except requests.exceptions.RequestException:
+        files = []
+    return render_template('index.html', files=files)
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """Handles the single file upload form."""
+    if 'file' not in request.files or request.files['file'].filename == '':
+        flash("No file selected for upload.", "error")
+        return redirect(url_for('index'))
+
+    file = request.files['file']
+    filename = file.filename
+    file_data = file.read()
+
+    encryption_enabled = 'encrypt' in request.form
+    password = request.form.get('password', '')
+
+    if encryption_enabled and not password:
+        flash("Encryption was selected, but no password was provided.", "error")
+        return redirect(url_for('index'))
+
+    # Call our reusable backup function
+    if backup_single_file(file_data, filename, encryption_enabled, password):
+        # On success, update the local hash cache so the sync feature is aware of this file
+        local_hashes = read_local_hashes()
+        local_hashes[filename] = hashlib.sha256(file_data).hexdigest()
+        write_local_hashes(local_hashes)
+        flash(f"'{filename}' was uploaded successfully!", "success")
+    else:
+        flash(f"Failed to upload '{filename}'.", "error")
+
+    return redirect(url_for('index'))
+
+@app.route('/sync', methods=['POST'])
+def sync_folder():
+    """Handles the folder sync form for incremental backups."""
+    encryption_enabled = 'encrypt' in request.form
+    password = request.form.get('password', '')
+
+    if encryption_enabled and not password:
+        flash("Encryption was selected, but no password was provided.", "error")
+        return redirect(url_for('index'))
     
+    print("\n--- Starting Synchronization Process ---")
+    if not os.path.exists(BACKUP_FOLDER):
+        os.makedirs(BACKUP_FOLDER)
+
+    local_hashes = read_local_hashes()
+    files_in_folder = os.listdir(BACKUP_FOLDER)
+    
+    for filename in files_in_folder:
+        filepath = os.path.join(BACKUP_FOLDER, filename)
+        if not os.path.isfile(filepath):
+            continue
+
+        with open(filepath, 'rb') as f:
+            file_data = f.read()
+        current_hash = hashlib.sha256(file_data).hexdigest()
+
+        if local_hashes.get(filename) == current_hash:
+            print(f"'{filename}' is unchanged. Skipping.")
+            continue
+        
+        print(f"'{filename}' is new or modified. Backing up...")
+        # Call our reusable backup function, passing the file data
+        if backup_single_file(file_data, filename, encryption_enabled, password):
+             local_hashes[filename] = current_hash
+        else:
+            print(f"Failed to backup '{filename}'. Will retry on next sync.")
+
+    write_local_hashes(local_hashes)
+    print("--- Synchronization Process Finished ---\n")
+    flash("Synchronization process completed.", "success")
+    return redirect(url_for('index'))
+
+@app.route('/restore/<filename>')
+def restore_file(filename):
+    """Handles restoring a file, with or without password decryption."""
+    try:
+        # 1. Get file info from coordinator
+        response = requests.get(f"{COORDINATOR_URL}/get-file-info/{filename}")
+        response.raise_for_status()
+        file_info = response.json()
+        locations = file_info['locations']
+        file_hash = file_info['hash']
+        is_encrypted = file_info.get('encrypted', False)
+        
+        password = request.args.get('password', '')
+        if is_encrypted and not password:
+            flash("File is encrypted, but no password was provided for restore.", "error")
+            return redirect(url_for('index'))
+            
+    except requests.exceptions.RequestException as e:
+        flash(f"Could not get file info from coordinator: {e}", "error")
+        return redirect(url_for('index'))
+
+    # 2. Try downloading from each replica location
+    downloaded_data = None
+    for node_url in locations:
+        try:
+            download_url = f"{node_url}/retrieve/{file_hash}"
+            response = requests.get(download_url, timeout=5)
+            response.raise_for_status()
+            downloaded_data = response.content
+            print(f"Download successful from {node_url}")
+            break 
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to download from {node_url}: {e}. Trying next replica.")
+
+    if downloaded_data is None:
+        flash("Could not restore file. All replicas are offline.", "error")
+        return redirect(url_for('index'))
+    
+    # 3. Conditionally decrypt the downloaded data
+    if is_encrypted:
+        try:
+            key = derive_key(password)
+            fernet = Fernet(key)
+            decrypted_data = fernet.decrypt(downloaded_data)
+        except InvalidToken:
+            flash("Decryption failed! The password may be incorrect.", "error")
+            return redirect(url_for('index'))
+        except Exception as e:
+            flash(f"An unknown decryption error occurred: {e}", "error")
+            return redirect(url_for('index'))
+    else:
+        decrypted_data = downloaded_data
+    
+    # 4. Verify data integrity and send file to user
+    if hashlib.sha256(decrypted_data).hexdigest() != file_hash:
+        flash("File integrity check failed after download. Data may be corrupt.", "error")
+        return redirect(url_for('index'))
+        
+    return send_file(
+        io.BytesIO(decrypted_data),
+        as_attachment=True,
+        download_name=filename
+    )
+
+@app.route('/delete/<filename>', methods=['POST'])
+def delete_backup(filename):
+    """Initiates the deletion of a backup by calling the coordinator."""
+    try:
+        # 1. Command the coordinator to orchestrate the deletion of the file everywhere
+        print(f"Sending delete request to coordinator for: {filename}")
+        response = requests.post(f"{COORDINATOR_URL}/delete-file", json={'filename': filename})
+        response.raise_for_status() # This will raise an error if the coordinator fails
+
+        # 2. If the coordinator succeeds, remove the file from the client's local hash cache as well
+        local_hashes = read_local_hashes()
+        if filename in local_hashes:
+            del local_hashes[filename]
+            write_local_hashes(local_hashes)
+            print(f"Removed '{filename}' from local hash cache.")
+        
+        flash(f"Successfully deleted the backup for '{filename}'.", "success")
+
+    except requests.exceptions.RequestException as e:
+        flash(f"Error communicating with coordinator during deletion: {e}", "error")
+        print(f"Error during deletion of {filename}: {e}")
+
+    return redirect(url_for('index'))
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

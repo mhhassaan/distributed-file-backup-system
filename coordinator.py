@@ -1,8 +1,8 @@
-# coordinator.py (Updated for Replication)
 import json
 import os
-import time # <-- Add time import
-import threading # <-- Add threading import
+import requests  # <-- Added missing import
+import time
+import threading
 from flask import Flask, request, jsonify
 from itertools import cycle
 
@@ -10,26 +10,32 @@ app = Flask(__name__)
 
 # --- Configuration ---
 REPLICATION_FACTOR = 2
-storage_nodes = {}
-METADATA_DB = 'coordinator_metadata.json'
+METADATA_DB_FILE = 'coordinator_metadata.json'
 
-# --- Helper function to get a list of currently active nodes ---
+# --- In-Memory State Management ---
+# These global variables are the "single source of truth" while the app is running.
+storage_nodes = {}
+METADATA = {}
+
+def save_metadata_to_disk():
+    """Saves the current in-memory METADATA to the JSON file."""
+    with open(METADATA_DB_FILE, 'w') as f:
+        json.dump(METADATA, f, indent=4)
+
+def load_metadata_from_disk():
+    """Loads metadata from the JSON file into memory at startup."""
+    global METADATA
+    if os.path.exists(METADATA_DB_FILE) and os.path.getsize(METADATA_DB_FILE) > 0:
+        with open(METADATA_DB_FILE, 'r') as f:
+            METADATA = json.load(f)
+    else:
+        METADATA = {}
+    print("Metadata loaded into memory.")
+
 def get_active_nodes():
-    # A node is active if it has sent a heartbeat recently (e.g., within 30 seconds)
+    """Returns a list of storage nodes that have sent a recent heartbeat."""
     current_time = time.time()
     return [node for node, stats in storage_nodes.items() if current_time - stats.get('last_seen', 0) < 30]
-
-def read_metadata():
-    if not os.path.exists(METADATA_DB):
-        return {} # Use a dictionary for metadata: {filename: {hash: ..., locations: ...}}
-    if os.path.getsize(METADATA_DB) == 0:
-        return {}
-    with open(METADATA_DB, 'r') as f:
-        return json.load(f)
-
-def write_metadata(data):
-    with open(METADATA_DB, 'w') as f:
-        json.dump(data, f, indent=4)
 
 # --- API Endpoints ---
 
@@ -41,85 +47,97 @@ def register_node():
         print(f"Registered new storage node: {node_address}")
     return jsonify({"message": "Successfully registered"}), 200
 
-@app.route('/get-storage-nodes', methods=['GET']) # <-- Renamed for clarity
+@app.route('/get-storage-nodes', methods=['GET'])
 def get_storage_nodes():
-    """
-    Assign a set of storage nodes for a new file backup.
-    """
+    """Assigns a set of storage nodes for a new file backup."""
     active_nodes = get_active_nodes()
     if len(active_nodes) < REPLICATION_FACTOR:
-        return jsonify({"error": "Not enough active storage nodes to meet replication factor."}), 503
+        return jsonify({"error": "Not enough active nodes."}), 503
     
-    # Simple round-robin assignment for multiple nodes
     node_cycler = cycle(active_nodes)
     assigned_nodes = [next(node_cycler) for _ in range(REPLICATION_FACTOR)]
-    
     return jsonify({"storage_node_urls": assigned_nodes})
 
 @app.route('/log-backup', methods=['POST'])
 def log_backup():
-    """The client calls this after a successful upload to log the file's metadata."""
+    """Logs backup metadata directly into the in-memory dictionary."""
+    global METADATA
     data = request.json
     filename = data.get('filename')
-    file_hash = data.get('hash')
-    locations = data.get('locations')
-    is_encrypted = data.get('encrypted', False) # <-- Get the new encryption flag
 
-    metadata = read_metadata()
-    metadata[filename] = {
-        'hash': file_hash,
-        'locations': locations,
-        'encrypted': is_encrypted # <-- Store the flag in the metadata
+    # Modify the global METADATA dictionary directly
+    METADATA[filename] = {
+        'hash': data.get('hash'),
+        'locations': data.get('locations'),
+        'encrypted': data.get('encrypted', False)
     }
-    write_metadata(metadata)
-    print(f"Logged backup for {filename} (Encrypted: {is_encrypted}) at {locations}")
+    # Persist the change to disk
+    save_metadata_to_disk()
+    
+    print(f"\n[DEBUG /log-backup] File logged. In-memory METADATA is now: {METADATA}\n")
     return jsonify({"message": "Backup logged successfully."})
 
 @app.route('/get-file-info/<filename>', methods=['GET'])
 def get_file_info(filename):
-    """Return the location, hash, and encryption status of a file."""
-    metadata = read_metadata()
-    file_info = metadata.get(filename)
+    """Retrieves file info directly from memory."""
+    file_info = METADATA.get(filename)
     if not file_info:
         return jsonify({"error": "File not found."}), 404
-    
-    # We now also return the 'encrypted' flag
-    response_data = {
-        'hash': file_info['hash'],
-        'locations': file_info['locations'],
-        'encrypted': file_info.get('encrypted', False) # <-- Return the flag
-    }
-    return jsonify(response_data)
+    return jsonify(file_info)
 
 @app.route('/list-files', methods=['GET'])
 def list_files():
-    """A new endpoint to provide the list of files for the UI."""
-    metadata = read_metadata()
-    # Format the data for the UI template
-    files_list = [{'name': name, 'hash': info['hash']} for name, info in metadata.items()]
+    """Provides the list of files to the UI, reading directly from memory."""
+    print(f"\n[DEBUG /list-files] Client is requesting file list. Sending data from METADATA: {METADATA}\n")
+    files_list = [{'name': name, **info} for name, info in METADATA.items()]
     return jsonify(files_list)
 
-# --- NEW: Heartbeat Mechanism ---
+# FIXED: Added the missing @app.route decorator
+@app.route('/delete-file', methods=['POST'])
+def delete_file():
+    """Orchestrates the deletion of a file and all its replicas."""
+    global METADATA
+    data = request.json
+    filename = data.get('filename')
+    if not filename or filename not in METADATA:
+        return jsonify({"error": "File not found."}), 404
+
+    file_info = METADATA[filename]
+    file_hash = file_info['hash']
+    locations = file_info['locations']
+
+    for node_url in locations:
+        try:
+            requests.delete(f"{node_url}/delete/{file_hash}", timeout=5)
+        except requests.exceptions.RequestException as e:
+            print(f"Could not contact node {node_url} to delete file: {e}")
+
+    # After attempting deletion, remove the metadata from memory
+    del METADATA[filename]
+    save_metadata_to_disk()
+    
+    print(f"Removed metadata for '{filename}'")
+    return jsonify({"message": f"Deletion process for '{filename}' initiated."})
+
 @app.route('/heartbeat', methods=['POST'])
 def heartbeat():
     """Receives heartbeats from storage nodes."""
     node_address = request.json.get('address')
     if node_address in storage_nodes:
         storage_nodes[node_address]['last_seen'] = time.time()
-    return jsonify({"message": "Heartbeat received"}), 200
+    return jsonify({"message": "Heartbeat received"})
 
 def health_check_thread():
-    """A background thread to periodically print the status of nodes."""
+    """A background thread to periodically print the status of active nodes."""
     while True:
+        time.sleep(20)
         print("\n--- Health Check ---")
-        active_nodes = get_active_nodes()
-        print(f"Active nodes: {active_nodes}")
+        print(f"Active nodes: {get_active_nodes()}")
         print("--------------------\n")
-        time.sleep(15)
 
 if __name__ == '__main__':
-    # Start the health check thread
+    load_metadata_from_disk()
+    
     checker = threading.Thread(target=health_check_thread, daemon=True)
     checker.start()
     app.run(host='0.0.0.0', port=5002, debug=True)
-

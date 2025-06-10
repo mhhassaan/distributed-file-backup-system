@@ -11,8 +11,10 @@
         table { width: 100%; border-collapse: collapse; }
         th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
         th { background-color: #007bff; color: white; }
-        .btn { padding: 10px 15px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; }
+        .btn { padding: 10px 15px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; cursor: pointer; border: none; font-size: 1em; margin-right: 5px;}
         .btn-restore { background-color: #17a2b8; }
+        .btn-delete { background-color: #dc3545; }
+        form.inline-form { display: inline-block; margin: 0; }
     </style>
 </head>
 <body>
@@ -21,21 +23,31 @@
 
         <h2>Upload a New File</h2>
         <form action="/upload" method="post" enctype="multipart/form-data">
-            <input type="file" name="file" required>
-            <button type="submit" class="btn">Backup File</button>
+            <div style="margin-bottom: 1em;"><input type="file" name="file" required></div>
+            <div style="margin-bottom: 1em;">
+                <input type="checkbox" id="encrypt-single" name="encrypt" value="true">
+                <label for="encrypt-single">Add AES Encryption</label>
+            </div>
+            <div id="password-field-single" style="display:none; margin-bottom: 1em;">
+                <label for="password-single">Encryption Password:</label>
+                <input type="password" id="password-single" name="password">
+            </div>
+            <button type="submit" class="btn">Upload File</button>
         </form>
-         <h2>Sync Backup Folder</h2>
-        <p>
-            Place files in the <strong>files_to_backup</strong> directory and click Sync.
-            Only new or changed files will be uploaded.
-        </p>
+        <hr style="margin: 2em 0;">
+        <h2>Sync Backup Folder</h2>
         <form action="/sync" method="post">
             <div style="margin-bottom: 1em;">
-                <input type="checkbox" id="encrypt" name="encrypt" value="false">
-                <label for="encrypt">Add AES Encryption</label>
+                 <input type="checkbox" id="encrypt-sync" name="encrypt" value="true">
+                <label for="encrypt-sync">Add AES Encryption</label>
+            </div>
+            <div id="password-field-sync" style="display:none; margin-bottom: 1em;">
+                <label for="password-sync">Encryption Password:</label>
+                <input type="password" id="password-sync" name="password">
             </div>
             <button type="submit" class="btn">Sync Now</button>
         </form>
+
         <h2>Backed-Up Files</h2>
         <table>
             <thead>
@@ -50,13 +62,127 @@
                 <tr>
                     <td>{{ file.name }}</td>
                     <td>{{ file.hash[:16] }}...</td>
-                    <td>
-                        <a href="/restore/{{ file.name }}" class="btn btn-restore">Restore</a>
+                    <td style="white-space: nowrap;">
+                        {% if file.encrypted %}
+                            <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">
+                                Restore (Encrypted)
+                            </button>
+                        {% else %}
+                            <a href="/restore/{{ file.name }}" class="btn btn-restore">
+                                Restore
+                            </a>
+                        {% endif %}
+
+                        <form action="/delete/{{ file.name }}" method="post" class="inline-form js-delete-form" data-filename="{{ file.name }}">
+                            <button type="submit" class="btn btn-delete">Delete</button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("✅ [1] DOM is ready, script is running!");
+
+        // --- Logic for password field visibility ---
+        function setupToggleButton(type) {
+            const checkbox = document.getElementById('encrypt-' + type);
+            const passwordField = document.getElementById('password-field-' + type);
+            if (checkbox && passwordField) {
+                passwordField.style.display = checkbox.checked ? 'block' : 'none';
+                checkbox.addEventListener('change', function() {
+                    passwordField.style.display = this.checked ? 'block' : 'none';
+                });
+            } else {
+                // This will tell us if an element was not found
+                console.error("Could not find elements for setupToggleButton: " + type);
+            }
+        }
+        
+        console.log("⚙️ [2] Setting up password toggles...");
+        setupToggleButton('single');
+        setupToggleButton('sync');
+        console.log("👍 [3] Password toggles set up.");
+
+
+        // --- Logic for Restore Buttons ---
+        console.log("⚙️ [4] Querying for restore buttons...");
+        const restoreButtons = document.querySelectorAll('.js-restore-button');
+        console.log(`Found ${restoreButtons.length} restore button(s).`);
+
+        restoreButtons.forEach(function(button) {
+            console.log("Attaching click listener to restore button for file: " + button.getAttribute('data-filename'));
+            button.addEventListener('click', function() {
+                const filename = this.getAttribute('data-filename');
+                const password = prompt("Please enter the encryption password for '" + filename + "':", "");
+                if (password !== null && password !== "") {
+                    window.location.href = `/restore/${filename}?password=${encodeURIComponent(password)}`;
+                }
+            });
+        });
+        console.log("👍 [5] Restore button listeners attached.");
+
+
+        // --- Logic for Delete Forms ---
+        console.log("⚙️ [6] Querying for delete forms...");
+        const deleteForms = document.querySelectorAll('.js-delete-form');
+        console.log(`Found ${deleteForms.length} delete form(s).`);
+
+        deleteForms.forEach(function(form) {
+            console.log("Attaching submit listener to delete form for file: " + form.getAttribute('data-filename'));
+            form.addEventListener('submit', function(event) {
+                const filename = this.getAttribute('data-filename');
+                if (!confirm('Are you sure you want to permanently delete the backup for "' + filename + '"?')) {
+                    event.preventDefault();
+                }
+            });
+        });
+        console.log("👍 [7] Delete form listeners attached. Script finished!");
+    });
+</script>
+    <!-- <script>
+        // This function runs once the entire page is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM is ready, script is running!");
+            // --- Logic for password field visibility ---
+            function setupToggleButton(type) {
+                const checkbox = document.getElementById('encrypt-' + type);
+                const passwordField = document.getElementById('password-field-' + type);
+                if (checkbox && passwordField) {
+                    // Set initial state
+                    passwordField.style.display = checkbox.checked ? 'block' : 'none';
+                    // Add listener for changes
+                    checkbox.addEventListener('change', function() {
+                        passwordField.style.display = this.checked ? 'block' : 'none';
+                    });
+                }
+            }
+            setupToggleButton('single');
+            setupToggleButton('sync');
+
+            // --- Logic for Restore Buttons ---
+            document.querySelectorAll('.js-restore-button').forEach(function(button) {
+                button.addEventListener('click', function() {
+                    const filename = this.getAttribute('data-filename');
+                    const password = prompt("Please enter the encryption password for '" + filename + "':", "");
+                    if (password !== null && password !== "") {
+                        window.location.href = `/restore/${filename}?password=${encodeURIComponent(password)}`;
+                    }
+                });
+            });
+
+            // --- Logic for Delete Forms ---
+            document.querySelectorAll('.js-delete-form').forEach(function(form) {
+                form.addEventListener('submit', function(event) {
+                    const filename = this.getAttribute('data-filename');
+                    if (!confirm('Are you sure you want to permanently delete the backup for "' + filename + '"?')) {
+                        event.preventDefault(); // This stops the form from submitting if the user clicks "Cancel"
+                    }
+                });
+            });
+        });
+    </script> -->
 </body>
 </html>

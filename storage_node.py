@@ -53,6 +53,24 @@ def retrieve_chunk(file_hash):
         return send_from_directory(STORAGE_DIR, file_hash)
     else:
         return jsonify({"error": "File not found."}), 404
+    
+@app.route('/delete/<file_hash>', methods=['DELETE'])
+def delete_chunk(file_hash):
+    """
+    Deletes a specific file chunk based on its hash.
+    """
+    try:
+        file_path = os.path.join(STORAGE_DIR, file_hash)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"Successfully deleted file with hash: {file_hash}")
+            return jsonify({"message": f"File {file_hash} deleted successfully."}), 200
+        else:
+            # It's not an error if the file is already gone
+            return jsonify({"message": "File not found, but considered deleted."}), 200
+    except Exception as e:
+        print(f"Error deleting file {file_hash}: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001

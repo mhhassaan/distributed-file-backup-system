@@ -4,274 +4,192 @@
     <meta charset="UTF-8">
     <title>Distributed File Backup Client</title>
     <style>
-        /* Modern CSS Reset */
-        *, *::before, *::after {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
+        body { font-family: sans-serif; margin: 2em; background-color: #eef2f5; }
+        h1, h2, h3, h4 { color: #333; }
+        .container { max-width: 850px; margin: auto; background: white; padding: 2em 2.5em; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1 { font-size: 2.5em; text-align: center; margin-bottom: 1.5em; }
+        h2 { font-size: 1.75em; border-bottom: 2px solid #eef2f5; padding-bottom: 0.5em; margin-top: 1.5em; margin-bottom: 1em; }
+        h3 { font-size: 1.2em; margin-top: 1.5em; color: #555; }
+        h4 { font-size: 1em; font-weight: 600; margin-bottom: 1em; }
+        form { margin-bottom: 2em; }
+        input[type="file"], input[type="text"], input[type="password"] {
+            width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 1em;
         }
-
-        /* Variables for easy theme management */
-        :root {
-            --primary-color: #007bff;
-            --secondary-color: #6c757d;
-            --success-color: #28a745;
-            --danger-color: #dc3545;
-            --info-color: #17a2b8;
-            --light-color: #f8f9fa;
-            --dark-color: #343a40;
-            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            --border-radius: 8px;
-            --box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-
-        body {
-            font-family: var(--font-family);
-            margin: 0;
-            background-color: #eef2f5; /* Softer background color */
-            color: var(--dark-color);
-            line-height: 1.6;
-        }
-
-        .container {
-            max-width: 850px;
-            margin: 2em auto;
-            background: white;
-            padding: 2em 2.5em;
-            border-radius: var(--border-radius);
-            box-shadow: var(--box-shadow);
-        }
-
-        h1, h2 {
-            color: var(--dark-color);
-            margin-bottom: 0.75em;
-        }
-        
-        h1 {
-            font-size: 2.5em;
-            text-align: center;
-            margin-bottom: 1.5em;
-        }
-
-        h2 {
-            font-size: 1.75em;
-            border-bottom: 2px solid #eef2f5;
-            padding-bottom: 0.5em;
-        }
-
-        form {
-            margin-bottom: 2em;
-        }
-        
-        form div {
-            margin-bottom: 1em;
-        }
-
-        input[type="file"], input[type="password"] {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 1em;
-            transition: border-color 0.3s;
-        }
-
-        input[type="file"] {
-            padding: 5px;
-        }
-
-        input[type="password"]:focus, input[type="file"]:focus {
-            border-color: var(--primary-color);
-            outline: none;
-        }
-        
-        input[type="checkbox"] {
-            margin-right: 10px;
-            transform: scale(1.2); /* Make checkbox slightly larger */
-        }
-
-        label {
-            font-weight: 600;
-        }
-        
-        hr {
-            border: none;
-            height: 1px;
-            background-color: #ddd;
-            margin: 2.5em 0;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1.5em;
-        }
-
-        th, td {
-            padding: 15px;
-            border-bottom: 1px solid #eef2f5;
-            text-align: left;
-            vertical-align: middle;
-        }
-
-        th {
-            background-color: var(--light-color);
-            font-weight: 700;
-            color: var(--dark-color);
-            text-transform: uppercase;
-            font-size: 0.9em;
-        }
-        
-        tr:hover {
-            background-color: #f8f9fa;
-        }
-
-        .btn {
-            padding: 12px 20px;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            cursor: pointer;
-            border: none;
-            font-size: 1em;
-            font-weight: 600;
-            margin-right: 5px;
-            transition: background-color 0.3s, transform 0.2s;
-            display: inline-block;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px); /* Slight lift on hover */
-        }
-
-        .btn[type="submit"] {
-            background-color: var(--primary-color);
-        }
-        
-        .btn[type="submit"]:hover {
-             background-color: #0056b3;
-        }
-        
-        .btn-restore { background-color: var(--info-color); }
-        .btn-restore:hover { background-color: #138496; }
-
-        .btn-delete { background-color: var(--danger-color); }
-        .btn-delete:hover { background-color: #c82333; }
-        
-        form.inline-form {
-            display: inline-block;
-            margin: 0;
-        }
-
+        input[type="checkbox"] { margin-right: 10px; transform: scale(1.2); }
+        label { font-weight: 600; }
+        hr { border: none; height: 1px; background-color: #ddd; margin: 2.5em 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1em; }
+        th, td { padding: 15px; border-bottom: 1px solid #eef2f5; text-align: left; vertical-align: middle; }
+        th { background-color: #f8f9fa; font-weight: 700; text-transform: uppercase; font-size: 0.9em; }
+        .btn { padding: 10px 15px; color: white; text-decoration: none; border-radius: 5px; cursor: pointer; border: none; font-size: 1em; font-weight: 600; margin-right: 5px; }
+        .btn[type="submit"] { background-color: #007bff; margin-top: 1em; }
+        .btn-restore { background-color: #17a2b8; }
+        .btn-delete { background-color: #dc3545; }
+        form.inline-form { display: inline-block; margin: 0; }
+        .folder-list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+        .folder-path { font-family: monospace; background-color: #f8f9fa; padding: 5px 8px; border-radius: 4px; }
+        .flash-message { padding: 1em; margin-bottom: 1em; border-radius: 5px; color: white; }
+        .flash-success { background-color: var(--success-color); }
+        .flash-error { background-color: var(--danger-color); }
+        .flash-warning { background-color: #ffc107; color: #333; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Distributed Backup System</h1>
+        <h1>Distributed File Backup System</h1>
 
-        <h2>Upload a New File</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <h2>Manual File Upload</h2>
         <form action="/upload" method="post" enctype="multipart/form-data">
             <div><input type="file" name="file" required></div>
-            <div>
+            <div style="margin-top: 1em;">
                 <input type="checkbox" id="encrypt-single" name="encrypt" value="true">
-                <label for="encrypt-single">Add AES Encryption</label>
+                <label for="encrypt-single">Encrypt Backup</label>
             </div>
-            <div id="password-field-single" style="display:none;">
-                <label for="password-single">Encryption Password:</label>
+            <div id="password-field-single" style="display:none; margin-bottom: 1em; margin-top: 1em;">
+                <label for="password-single">Password:</label>
                 <input type="password" id="password-single" name="password">
             </div>
             <button type="submit" class="btn">Upload File</button>
         </form>
-        
         <hr>
 
-        <h2>Sync Backup Folder</h2>
-        <form action="/sync" method="post">
-            <div>
-                <input type="checkbox" id="encrypt-sync" name="encrypt" value="true">
-                <label for="encrypt-sync">Add AES Encryption</label>
+        <h2>Folder Sync</h2>
+        <p>Add folders here to be monitored for automatic backups. You must provide the full, absolute path.</p>
+        <form action="/add-folder" method="post">
+             <div style="margin-bottom: 1em;">
+                <label for="folder_path">Folder Path to Watch:</label>
+                <input type="text" id="folder_path" name="folder_path" style="width: 100%;" required>
             </div>
-            <div id="password-field-sync" style="display:none;">
-                <label for="password-sync">Encryption Password:</label>
-                <input type="password" id="password-sync" name="password">
+            <div style="margin-bottom: 1em;">
+                <input type="checkbox" id="encrypt-watcher" name="encrypt" value="true">
+                <label for="encrypt-watcher">Encrypt Sync Backup</label>
             </div>
-            <button type="submit" class="btn">Sync Now</button>
+            <div id="password-field-watcher" style="display:none; margin-bottom: 1em;">
+                <label for="password-watcher">Password:</label>
+                <input type="password" id="password-watcher" name="password">
+            </div>
+            <button type="submit" class="btn">Add Folder</button>
         </form>
 
-        <h2>Backed-Up Files</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Original Filename</th>
-                    <th>File Hash (SHA-256)</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for file in files %}
-                <tr>
-                    <td>{{ file.name }}</td>
-                    <td>
-                        {% if file.is_chunked %}
-                            (Chunked File)
-                        {% else %}
-                            {{ file.hash[:16] }}...
-                        {% endif %}
-                    </td>
-                    <td style="white-space: nowrap;">
-                        {% if file.encrypted %}
-                            <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">
-                                Restore
-                            </button>
-                        {% else %}
-                            <a href="/restore/{{ file.name }}" class="btn btn-restore">
-                                Restore
-                            </a>
-                        {% endif %}
+        <h3>Currently Monitored Folders</h3>
+        <div class="folder-list">
+            {% for folder in watched_folders %}
+            <div class="folder-list-item">
+                <span class="folder-path">{{ folder.path }}</span>
+                <form action="/remove-folder" method="post" class="inline-form">
+                    <input type="hidden" name="folder_path" value="{{ folder.path }}">
+                    <button type="submit" class="btn btn-delete">Remove</button>
+                </form>
+            </div>
+            {% else %}
+            <p>No folders are currently being monitored.</p>
+            {% endfor %}
+        </div>
+        <hr>
 
-                        <form action="/delete/{{ file.name }}" method="post" class="inline-form js-delete-form" data-filename="{{ file.name }}">
-                            <button type="submit" class="btn btn-delete">Delete</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <h2>Backup Overview</h2>
+        <h3>Synced Folders</h3>
+        {% if synced_folders %}
+            {% for folder_path, files_in_folder in synced_folders.items() %}
+                <h4>Folder: <span class="folder-path">{{ folder_path }}</span></h4>
+                <table>
+                    <thead><tr><th>Filename</th><th>Details</th><th>Action</th></tr></thead>
+                    <tbody>
+                        {% for file in files_in_folder %}
+                        <tr>
+                            <td>{{ file.name }}</td>
+                            <td>{% if file.is_chunked %}(Chunked File){% else %}Hash: {{ file.hash[:16] }}...{% endif %}</td>
+                            <td style="white-space: nowrap;">
+                                {% if file.encrypted %}
+                                    <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">Restore</button>
+                                {% else %}
+                                    <a href="/restore/{{ file.name }}" class="btn btn-restore">Restore</a>
+                                {% endif %}
+                                <form action="/delete/{{ file.name }}" method="post" class="inline-form js-delete-form" data-filename="{{ file.name }}">
+                                    <button type="submit" class="btn btn-delete">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endfor %}
+        {% else %}
+            <p>No files from synced folders have been backed up yet.</p>
+        {% endif %}
+        
+        <h3 style="margin-top: 2em;">Individual Uploads</h3>
+        {% if single_files %}
+            <table>
+                <thead><tr><th>Filename</th><th>Details</th><th>Action</th></tr></thead>
+                <tbody>
+                    {% for file in single_files %}
+                    <tr>
+                        <td>{{ file.name }}</td>
+                        <td>{% if file.is_chunked %}(Chunked File){% else %}Hash: {{ file.hash[:16] }}...{% endif %}</td>
+                        <td style="white-space: nowrap;">
+                             {% if file.encrypted %}
+                                <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">Restore</button>
+                            {% else %}
+                                <a href="/restore/{{ file.name }}" class="btn btn-restore">Restore</a>
+                            {% endif %}
+                            <form action="/delete/{{ file.name }}" method="post" class="inline-form js-delete-form" data-filename="{{ file.name }}">
+                                <button type="submit" class="btn btn-delete">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No individual files have been backed up yet.</p>
+        {% endif %}
     </div>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // --- Logic for password field visibility ---
-            function setupToggleButton(type) {
-                const checkbox = document.getElementById('encrypt-' + type);
-                const passwordField = document.getElementById('password-field-' + type);
-                if (checkbox && passwordField) {
-                    passwordField.style.display = checkbox.checked ? 'block' : 'none';
-                    checkbox.addEventListener('change', function() {
-                        passwordField.style.display = this.checked ? 'block' : 'none';
-                    });
-                }
-            }
-            setupToggleButton('single');
-            setupToggleButton('sync');
 
-            // --- Logic for Restore Buttons ---
-            document.querySelectorAll('.js-restore-button').forEach(function(button) {
-                button.addEventListener('click', function() {
-                    const filename = this.getAttribute('data-filename');
-                    const password = prompt("Please enter the encryption password for '" + filename + "':", "");
-                    if (password !== null && password !== "") {
-                        window.location.href = `/restore/${filename}?password=${encodeURIComponent(password)}`;
-                    }
+    <script>
+        function setupToggleButton(type) {
+            const checkbox = document.getElementById('encrypt-' + type);
+            const passwordField = document.getElementById('password-field-' + type);
+            if (checkbox && passwordField) {
+                passwordField.style.display = checkbox.checked ? 'block' : 'none';
+                checkbox.addEventListener('change', function() {
+                    passwordField.style.display = this.checked ? 'block' : 'none';
                 });
+            }
+        }
+
+        function handleRestore(buttonElement) {
+            const filename = buttonElement.getAttribute('data-filename');
+            const password = prompt("Please enter the encryption password for '" + filename + "':", "");
+            if (password !== null && password !== "") {
+                window.location.href = `/restore/${filename}?password=${encodeURIComponent(password)}`;
+            }
+        }
+
+        function handleDelete(formElement) {
+            const filename = formElement.getAttribute('data-filename');
+            return confirm('Are you sure you want to permanently delete the backup for "' + filename + '"?');
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            setupToggleButton('single');
+            setupToggleButton('watcher');
+
+            document.querySelectorAll('.js-restore-button').forEach(function(button) {
+                button.addEventListener('click', function() { handleRestore(this); });
             });
 
-            // --- Logic for Delete Forms ---
             document.querySelectorAll('.js-delete-form').forEach(function(form) {
                 form.addEventListener('submit', function(event) {
-                    const filename = this.getAttribute('data-filename');
-                    if (!confirm('Are you sure you want to permanently delete the backup for "' + filename + '"?')) {
-                        event.preventDefault(); 
-                    }
+                    if (!handleDelete(this)) { event.preventDefault(); }
                 });
             });
         });

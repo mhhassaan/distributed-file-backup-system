@@ -4,17 +4,165 @@
     <meta charset="UTF-8">
     <title>Distributed File Backup Client</title>
     <style>
-        body { font-family: sans-serif; margin: 2em; background-color: #f4f4f9; }
-        h1, h2 { color: #333; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        form { margin-bottom: 2em; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
-        th { background-color: #007bff; color: white; }
-        .btn { padding: 10px 15px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; cursor: pointer; border: none; font-size: 1em; margin-right: 5px;}
-        .btn-restore { background-color: #17a2b8; }
-        .btn-delete { background-color: #dc3545; }
-        form.inline-form { display: inline-block; margin: 0; }
+        /* Modern CSS Reset */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Variables for easy theme management */
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+            --light-color: #f8f9fa;
+            --dark-color: #343a40;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        body {
+            font-family: var(--font-family);
+            margin: 0;
+            background-color: #eef2f5; /* Softer background color */
+            color: var(--dark-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: 2em auto;
+            background: white;
+            padding: 2em 2.5em;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+        }
+
+        h1, h2 {
+            color: var(--dark-color);
+            margin-bottom: 0.75em;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            text-align: center;
+            margin-bottom: 1.5em;
+        }
+
+        h2 {
+            font-size: 1.75em;
+            border-bottom: 2px solid #eef2f5;
+            padding-bottom: 0.5em;
+        }
+
+        form {
+            margin-bottom: 2em;
+        }
+        
+        form div {
+            margin-bottom: 1em;
+        }
+
+        input[type="file"], input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input[type="file"] {
+            padding: 5px;
+        }
+
+        input[type="password"]:focus, input[type="file"]:focus {
+            border-color: var(--primary-color);
+            outline: none;
+        }
+        
+        input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2); /* Make checkbox slightly larger */
+        }
+
+        label {
+            font-weight: 600;
+        }
+        
+        hr {
+            border: none;
+            height: 1px;
+            background-color: #ddd;
+            margin: 2.5em 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.5em;
+        }
+
+        th, td {
+            padding: 15px;
+            border-bottom: 1px solid #eef2f5;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        th {
+            background-color: var(--light-color);
+            font-weight: 700;
+            color: var(--dark-color);
+            text-transform: uppercase;
+            font-size: 0.9em;
+        }
+        
+        tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            cursor: pointer;
+            border: none;
+            font-size: 1em;
+            font-weight: 600;
+            margin-right: 5px;
+            transition: background-color 0.3s, transform 0.2s;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px); /* Slight lift on hover */
+        }
+
+        .btn[type="submit"] {
+            background-color: var(--primary-color);
+        }
+        
+        .btn[type="submit"]:hover {
+             background-color: #0056b3;
+        }
+        
+        .btn-restore { background-color: var(--info-color); }
+        .btn-restore:hover { background-color: #138496; }
+
+        .btn-delete { background-color: var(--danger-color); }
+        .btn-delete:hover { background-color: #c82333; }
+        
+        form.inline-form {
+            display: inline-block;
+            margin: 0;
+        }
+
     </style>
 </head>
 <body>
@@ -23,25 +171,27 @@
 
         <h2>Upload a New File</h2>
         <form action="/upload" method="post" enctype="multipart/form-data">
-            <div style="margin-bottom: 1em;"><input type="file" name="file" required></div>
-            <div style="margin-bottom: 1em;">
+            <div><input type="file" name="file" required></div>
+            <div>
                 <input type="checkbox" id="encrypt-single" name="encrypt" value="true">
                 <label for="encrypt-single">Add AES Encryption</label>
             </div>
-            <div id="password-field-single" style="display:none; margin-bottom: 1em;">
+            <div id="password-field-single" style="display:none;">
                 <label for="password-single">Encryption Password:</label>
                 <input type="password" id="password-single" name="password">
             </div>
             <button type="submit" class="btn">Upload File</button>
         </form>
-        <hr style="margin: 2em 0;">
+        
+        <hr>
+
         <h2>Sync Backup Folder</h2>
         <form action="/sync" method="post">
-            <div style="margin-bottom: 1em;">
-                 <input type="checkbox" id="encrypt-sync" name="encrypt" value="true">
+            <div>
+                <input type="checkbox" id="encrypt-sync" name="encrypt" value="true">
                 <label for="encrypt-sync">Add AES Encryption</label>
             </div>
-            <div id="password-field-sync" style="display:none; margin-bottom: 1em;">
+            <div id="password-field-sync" style="display:none;">
                 <label for="password-sync">Encryption Password:</label>
                 <input type="password" id="password-sync" name="password">
             </div>
@@ -71,7 +221,7 @@
                     <td style="white-space: nowrap;">
                         {% if file.encrypted %}
                             <button data-filename="{{ file.name }}" class="btn btn-restore js-restore-button">
-                                Restore (Encrypted)
+                                Restore
                             </button>
                         {% else %}
                             <a href="/restore/{{ file.name }}" class="btn btn-restore">
@@ -89,17 +239,13 @@
         </table>
     </div>
     <script>
-        // This function runs once the entire page is loaded
         document.addEventListener('DOMContentLoaded', function() {
-            console.log("DOM is ready, script is running!");
             // --- Logic for password field visibility ---
             function setupToggleButton(type) {
                 const checkbox = document.getElementById('encrypt-' + type);
                 const passwordField = document.getElementById('password-field-' + type);
                 if (checkbox && passwordField) {
-                    // Set initial state
                     passwordField.style.display = checkbox.checked ? 'block' : 'none';
-                    // Add listener for changes
                     checkbox.addEventListener('change', function() {
                         passwordField.style.display = this.checked ? 'block' : 'none';
                     });
@@ -124,7 +270,7 @@
                 form.addEventListener('submit', function(event) {
                     const filename = this.getAttribute('data-filename');
                     if (!confirm('Are you sure you want to permanently delete the backup for "' + filename + '"?')) {
-                        event.preventDefault(); // This stops the form from submitting if the user clicks "Cancel"
+                        event.preventDefault(); 
                     }
                 });
             });

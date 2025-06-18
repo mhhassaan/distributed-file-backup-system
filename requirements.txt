@@ -2,3 +2,4 @@ Flask
 requests
 cryptography
 watchdog
+python-dotenv

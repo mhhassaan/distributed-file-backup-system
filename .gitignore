@@ -1,5 +1,5 @@
 *.json
-
+.env
 /dbms
 /files_to_backup
 /files_to_backup2

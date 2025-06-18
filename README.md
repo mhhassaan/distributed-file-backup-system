@@ -34,14 +34,10 @@ The application is composed of three main components that work together:
     -   They have no knowledge of files, users, or the overall system state; they only store the data they are given.
     -   Multiple instances of this script can be run to scale the system's storage capacity and redundancy.
 
-<<<<<<< HEAD
 3.  **Storage Nodes (`storage_node_dropbox.py`)**
     -   Same as 'storage_node.py' only difference is instead of local nodes, cloud nodes are build on dropbox.
 
-4.  **Client Application (`web_ui.py`)**
-=======
 3.  **Client Application (`web_ui.py`)**
->>>>>>> 9ffb0241fbfb7714d9d269f92b6280acbecc5c76
     -   This is the user-facing component, providing a web dashboard for all interactions.
     -   It handles all client-side logic: hashing, chunking, and encryption.
     -   It communicates with the Coordinator to get instructions and log metadata.
@@ -62,7 +58,6 @@ The application is composed of three main components that work together:
 1.  **On Windows OS:**
     a. Copy the entire project folder over.
     b. Double-click **`setup.bat`** and wait for it to complete.
-<<<<<<< HEAD
 2.  **To start the application with local nodes:** Double-click **`start_all.bat`**. This will open the four server windows with. 
 3.  **To start the application with cloud nodes:** Open terminal in root folder and write in command `.\start.bat 4`, here 4 indicates 4 nodes. 
 4.  **Access the UI:** Open your web browser and navigate to **`http://127.0.0.1:5000`**.
@@ -81,4 +76,3 @@ The application is composed of three main components that work together:
 
 -   [cite_start]Muhammad Hassan – (FA22-BCS-100) 
 -   [cite_start]Baseer Ahmed Tahir – (FA22-BCS-104)
->>>>>>> 9ffb0241fbfb7714d9d269f92b6280acbecc5c76

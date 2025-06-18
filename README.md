@@ -1,8 +1,4 @@
 <p align="left">
-  <img src="https://raw.githubusercontent.com/gilbarbara/logos/92bb74e98bca1ea1ad794442676ebc4e75038adc/logos/python.svg" alt="Python Logo" width="150"/>
-</p>
-
-<p align="left">
   <img src="https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white" alt="Flask Badge"/>
   <img src="https://img.shields.io/badge/requests-2C5BB4?style=for-the-badge&logo=python&logoColor=white" alt="Requests Badge"/>
   <img src="https://img.shields.io/badge/Cryptography-FFD43B?style=for-the-badge&logo=python&logoColor=black" alt="Cryptography Badge"/>

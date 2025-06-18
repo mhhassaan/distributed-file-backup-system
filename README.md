@@ -1,3 +1,14 @@
+<p align="center">
+  <img src="https://www.python.org/static/community_logos/python-logo.png" alt="Python Logo" width="300"/>
+</p>
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white" alt="Flask Badge"/>
+  <img src="https://img.shields.io/badge/requests-2C5BB4?style=for-the-badge&logo=python&logoColor=white" alt="Requests Badge"/>
+  <img src="https://img.shields.io/badge/Cryptography-FFD43B?style=for-the-badge&logo=python&logoColor=black" alt="Cryptography Badge"/>
+  <img src="https://img.shields.io/badge/Watchdog-4B8BBE?style=for-the-badge&logo=python&logoColor=white" alt="Watchdog Badge"/>
+</p>
+
 # Distributed File Backup System
 
 A fault-tolerant, distributed backup system built in Python as a semester project for Parallel & Distributed Computing. This application allows users to back up files from their local machine to multiple storage nodes, ensuring data integrity, security, and high availability. It features a full web-based user interface for management, automatic background synchronization of specified folders, and robust handling of large files.

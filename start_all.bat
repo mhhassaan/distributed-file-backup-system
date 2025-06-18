@@ -2,9 +2,9 @@
 TITLE Main Control Script for Distributed Backup System
 
 ECHO.
-ECHO ===============================================
-ECHO   Starting Distributed File Backup System
-ECHO ===============================================
+ECHO ============================================================
+ECHO   Starting Distributed File Backup System With Local Nodes
+ECHO ============================================================
 ECHO.
 
 ECHO Activating Python virtual environment...

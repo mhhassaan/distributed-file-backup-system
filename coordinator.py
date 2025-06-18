@@ -1,5 +1,3 @@
-# The Final, Corrected coordinator.py
-
 import json
 import os
 import requests
@@ -11,7 +9,7 @@ from itertools import cycle
 app = Flask(__name__)
 
 # --- Configuration ---
-REPLICATION_FACTOR = 2
+REPLICATION_FACTOR = 4
 METADATA_DB_FILE = 'coordinator_metadata.json'
 
 # --- In-Memory State Management ---
@@ -55,12 +53,20 @@ def get_storage_nodes():
 
 @app.route('/log-backup', methods=['POST'])
 def log_backup():
+    """
+    Logs backup metadata. It now transparently stores the more detailed 
+    metadata structure needed for striped replication.
+    """
     global METADATA
     data = request.json
     filename = data.get('filename')
-    METADATA[filename] = data # Store the entire metadata payload from the client
+
+    # The data will contain either a 'hash' key (for small files)
+    # or a 'chunk_map' and 'chunk_order' (for large, sharded files).
+    METADATA[filename] = data
     save_metadata_to_disk()
-    print(f"Coordinator: Logged backup for {filename}")
+    
+    print(f"\n[DEBUG /log-backup] Logged metadata for '{filename}'.\n")
     return jsonify({"message": "Backup logged successfully."})
 
 @app.route('/get-file-info/<filename>', methods=['GET'])
@@ -75,23 +81,52 @@ def list_files():
     files_list = [{'name': name, **info} for name, info in METADATA.items()]
     return jsonify(files_list)
 
+
 @app.route('/delete-file', methods=['POST'])
 def delete_file():
+    """
+    Orchestrates the deletion of a file and all its replicas.
+    [FIXED] Now correctly handles both single-hash and chunked files.
+    """
     global METADATA
     data = request.json
     filename = data.get('filename')
     if not filename or filename not in METADATA:
         return jsonify({"error": "File not found."}), 404
+
     file_info = METADATA[filename]
-    for node_url in file_info['locations']:
-        try:
-            requests.delete(f"{node_url}/delete/{file_info.get('hash') or file_info['chunk_hashes'][0]}", timeout=5)
-        except Exception as e:
-            print(f"Coordinator: Could not contact node {node_url} to delete file: {e}")
+    locations = file_info['locations']
+    
+    # Determine the list of hashes to delete
+    hashes_to_delete = []
+    if file_info.get('is_chunked'):
+        # For a large file, get the list of chunk hashes
+        hashes_to_delete = file_info.get('chunk_hashes', [])
+    else:
+        # For a small file, get the single hash and put it in a list
+        if file_info.get('hash'):
+            hashes_to_delete.append(file_info['hash'])
+
+    if not hashes_to_delete:
+        print(f"Coordinator: No hashes found to delete for '{filename}'.")
+    
+    # Command each storage node to delete every chunk/file hash
+    for file_hash in hashes_to_delete:
+        for node_url in locations:
+            try:
+                # The storage node's delete endpoint is /delete/<hash>
+                delete_url = f"{node_url}/delete/{file_hash}"
+                requests.delete(delete_url, timeout=5)
+                print(f"Coordinator: Commanded {node_url} to delete {file_hash}")
+            except requests.exceptions.RequestException as e:
+                print(f"Coordinator: Could not contact node {node_url} to delete file: {e}")
+
+    # After attempting deletion on all nodes, remove the metadata
     del METADATA[filename]
     save_metadata_to_disk()
+    
     print(f"Coordinator: Removed metadata for '{filename}'")
-    return jsonify({"message": f"Deletion initiated for '{filename}'."})
+    return jsonify({"message": f"Deletion process for '{filename}' initiated."})
 
 @app.route('/heartbeat', methods=['POST'])
 def heartbeat():

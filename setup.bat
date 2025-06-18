@@ -17,11 +17,11 @@ if %errorlevel% neq 0 (
 )
 
 ECHO [1/3] Creating a new Python virtual environment named 'venv'...
-python -m venv venv
+python -m venv dbms
 
 ECHO.
 ECHO [2/3] Activating the virtual environment...
-CALL .\venv\Scripts\activate
+CALL .\dbms\Scripts\activate
 
 ECHO.
 ECHO [3/3] Installing all required project libraries from requirements.txt...

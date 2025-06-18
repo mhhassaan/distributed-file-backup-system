@@ -56,8 +56,8 @@ The application is composed of three main components that work together:
 ## How to Run
 
 1.  **On Windows OS:**
-    a. Copy the entire project folder over.
-    b. Double-click **`setup.bat`** and wait for it to complete.
+    **a**. Copy the entire project folder over.
+    **b**. Double-click **`setup.bat`** and wait for it to complete.
 2.  **To start the application with local nodes:** Double-click **`start_all.bat`**. This will open the four server windows with. 
 3.  **To start the application with cloud nodes:** Open terminal in root folder and write in command `.\start.bat 4`, here 4 indicates 4 nodes. 
 4.  **Access the UI:** Open your web browser and navigate to **`http://127.0.0.1:5000`**.
@@ -67,12 +67,3 @@ The application is composed of three main components that work together:
 
 -   Muhammad Hassan – (FA22-BCS-100) 
 -   Baseer Ahmed Tahir – (FA22-BCS-104)
-=======
-2.  **To start the application:** Double-click **`start.bat`**. This will open the four server windows.
-3.  **Access the UI:** Open your web browser and navigate to **`http://127.0.0.1:5000`**.
-4.  **To stop the application:** Double-click **`stop_all.bat`**.
-
-## Group Members
-
--   [cite_start]Muhammad Hassan – (FA22-BCS-100) 
--   [cite_start]Baseer Ahmed Tahir – (FA22-BCS-104)
